@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+python-multipart
+sqlalchemy>=2
+pyyaml
+python-dotenv
+httpx
+boto3
+anthropic
+tzdata
+pytest

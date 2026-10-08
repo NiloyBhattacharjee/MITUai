@@ -1,0 +1,27 @@
+# Local:  docker compose up --build
+# Server: CI sets IMAGE_PREFIX=ghcr.io/<owner>/<repo> and pulls the images it built (see .github/workflows/ci-cd.yml)
+services:
+  backend:
+    build: ./backend
+    image: ${IMAGE_PREFIX:-mituai}-backend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: sqlite:////data/shop.db
+      MEDIA_DIR: /data/media
+    volumes:
+      - ./business.yaml:/srv/business.yaml:ro
+      - data:/data
+    ports: ["8000:8000"]
+
+  frontend:
+    build: ./frontend
+    image: ${IMAGE_PREFIX:-mituai}-frontend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://backend:8000
+    ports: ["5173:5173"]
+    depends_on: [backend]
+
+volumes:
+  data:

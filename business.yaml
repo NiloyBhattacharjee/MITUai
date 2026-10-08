@@ -1,0 +1,54 @@
+# Everything about the business lives here. Swap this file to run a different shop.
+name: Shuta Fashion
+name_bn: সুতা ফ্যাশন
+agent_name: Mitu
+timezone: Asia/Dhaka
+location: "Online shop, pickup point: House 12, Road 5, Dhanmondi, Dhaka 1205"
+hours: "Every day 10am–9pm (online orders taken 24/7, replies by a human only during these hours)"
+about: "Small Dhaka clothing shop selling panjabis, kurtis, sarees, shirts and more through Facebook and WhatsApp."
+
+delivery:
+  inside_dhaka: {label: Inside Dhaka, charge: 70, time: "1–2 days"}
+  outside_dhaka: {label: Outside Dhaka, charge: 130, time: "3–5 days"}
+
+payment_methods:
+  cod: {label: Cash on delivery, note: "Pay the rider when you receive the parcel."}
+  bkash: {label: bKash, note: "Our team sends the bKash merchant number after the order is confirmed. After paying, send the transaction ID (TrxID) here."}
+  nagad: {label: Nagad, note: "Our team sends the Nagad merchant number after the order is confirmed. After paying, send the transaction ID (TrxID) here."}
+
+return_policy: >-
+  Exchange or return within 3 days of delivery if the item is unused with tags on.
+  Size exchange is free inside Dhaka; outside Dhaka the customer pays the delivery charge.
+  Sale items cannot be returned. Refunds go back via bKash/Nagad within 5 working days.
+
+# Fixed replies that bypass the LLM (bilingual on purpose: we may not know the language yet).
+messages:
+  handoff: "ঠিক আছে, আমাদের টিমের একজন শিগগিরই এখানে উত্তর দেবেন। (A team member will reply here shortly.)"
+  unsupported_media: "দুঃখিত, আমি এখন শুধু টেক্সট আর ভয়েস মেসেজ বুঝতে পারি। চাইলে লিখে পাঠান, অথবা আমাদের টিমের কারো সাথে কথা বলতে চাইলে বলুন। (Sorry, I can only read text and voice notes for now — type your question, or ask for a human.)"
+  voice_unclear: "দুঃখিত, ভয়েস মেসেজটা পরিষ্কার বুঝতে পারিনি। আরেকবার বলবেন, নাকি লিখে পাঠাবেন? (Sorry, I couldn't catch that voice note — could you say it again or type it?)"
+  voice_too_long: "ভয়েস মেসেজটা একটু বড় হয়ে গেছে। ২ মিনিটের ছোট মেসেজ বা লিখে পাঠালে ভালো হয়। (That voice note is a bit long — please send one under 2 minutes, or type it.)"
+  error: "দুঃখিত, একটু সমস্যা হচ্ছে। আমাদের টিমের একজন শিগগিরই উত্তর দেবেন। (Sorry, something went wrong — a team member will reply soon.)"
+  # Sent to the customer when the owner changes an order's status ({order_id} is filled in).
+  order_confirmed: "আপনার অর্ডার #{order_id} কনফার্ম হয়েছে। ধন্যবাদ! (Your order #{order_id} is confirmed. Thank you!)"
+  order_shipped: "আপনার অর্ডার #{order_id} পাঠিয়ে দেওয়া হয়েছে, শিগগিরই পৌঁছে যাবে। (Your order #{order_id} has been shipped and is on its way.)"
+  order_delivered: "আপনার অর্ডার #{order_id} ডেলিভারি হয়েছে। আমাদের থেকে কেনার জন্য ধন্যবাদ! (Your order #{order_id} has been delivered. Thanks for shopping with us!)"
+  payment_received: "অর্ডার #{order_id} এর পেমেন্ট পেয়েছি, ধন্যবাদ! (We've received your payment for order #{order_id}. Thank you!)"
+  order_cancelled: "আপনার অর্ডার #{order_id} বাতিল করা হয়েছে। কোনো প্রশ্ন থাকলে এখানে জানান। (Your order #{order_id} has been cancelled. Message us here if you have any questions.)"
+
+# aliases: extra spellings customers use (Banglish, typos). Search also does fuzzy matching.
+products:
+  - {id: P01, name_en: Black Cotton Panjabi, name_bn: কালো কটন পাঞ্জাবি, category: panjabi, aliases: [panjabi, punjabi, panjabee, kalo panjabi], price: 1450, sizes: [M, L, XL, XXL], colours: [Black], stock: 18}
+  - {id: P02, name_en: White Eid Panjabi with Embroidery, name_bn: সাদা এমব্রয়ডারি পাঞ্জাবি, category: panjabi, aliases: [panjabi, punjabi, eid panjabi, shada panjabi], price: 2350, sizes: [M, L, XL], colours: [White, Off-white], stock: 9}
+  - {id: P03, name_en: Printed Short Panjabi, name_bn: প্রিন্টেড শর্ট পাঞ্জাবি, category: panjabi, aliases: [panjabi, punjabi, short panjabi, kabli], price: 1150, sizes: [S, M, L, XL], colours: [Navy, Maroon, Olive], stock: 25}
+  - {id: P04, name_en: Blue Cotton Kurti, name_bn: নীল কটন কুর্তি, category: kurti, aliases: [kurti, kurta, kurtee, nil kurti], price: 950, sizes: [S, M, L, XL], colours: [Blue], stock: 14}
+  - {id: P05, name_en: Floral Georgette Kurti, name_bn: ফ্লোরাল জর্জেট কুর্তি, category: kurti, aliases: [kurti, kurta, georgette], price: 1250, sizes: [S, M, L], colours: [Pink, Peach, Mint], stock: 11}
+  - {id: P06, name_en: Three-Piece Lawn Set, name_bn: লন থ্রি-পিস, category: three-piece, aliases: [three piece, 3 piece, salwar kameez, thri pis], price: 2650, sizes: [M, L, XL], colours: [Yellow, Teal, Lavender], stock: 7}
+  - {id: P07, name_en: Tangail Cotton Saree, name_bn: টাঙ্গাইল কটন শাড়ি, category: saree, aliases: [saree, sari, shari, tangail], price: 1850, sizes: [Free size], colours: [Red, Green, Orange], stock: 10}
+  - {id: P08, name_en: Jamdani Saree, name_bn: জামদানি শাড়ি, category: saree, aliases: [saree, sari, shari, jamdani], price: 6500, sizes: [Free size], colours: [Off-white, Black], stock: 3}
+  - {id: P09, name_en: Men's Casual Check Shirt, name_bn: চেক শার্ট, category: shirt, aliases: [shirt, sart, check shirt], price: 890, sizes: [M, L, XL, XXL], colours: [Red, Blue, Grey], stock: 30}
+  - {id: P10, name_en: Formal White Shirt, name_bn: সাদা ফরমাল শার্ট, category: shirt, aliases: [shirt, sart, formal shirt], price: 1100, sizes: [M, L, XL], colours: [White], stock: 0}
+  - {id: P11, name_en: Cotton Lungi, name_bn: সুতি লুঙ্গি, category: lungi, aliases: [lungi, lungee], price: 450, sizes: [Free size], colours: [Blue check, Green check], stock: 40}
+  - {id: P12, name_en: Kids Panjabi, name_bn: বাচ্চাদের পাঞ্জাবি, category: panjabi, aliases: [kids panjabi, baccha panjabi, chotoder panjabi, punjabi], price: 750, sizes: ["2-3Y", "4-5Y", "6-7Y", "8-9Y"], colours: [Sky blue, Cream], stock: 16}
+  - {id: P13, name_en: Ladies Hijab, name_bn: হিজাব, category: hijab, aliases: [hijab, hijaab, scarf, orna], price: 350, sizes: [Free size], colours: [Black, Beige, Navy, Maroon], stock: 50}
+  - {id: P14, name_en: Men's Denim Jeans, name_bn: ডেনিম জিন্স, category: jeans, aliases: [jeans, jins, pant, denim], price: 1350, sizes: ["30", "32", "34", "36"], colours: [Dark blue, Light blue], stock: 22}
+  - {id: P15, name_en: Cotton Polo T-shirt, name_bn: পোলো টি-শার্ট, category: t-shirt, aliases: [t-shirt, tshirt, polo, genji], price: 650, sizes: [M, L, XL, XXL], colours: [Black, White, Navy, Maroon], stock: 35}

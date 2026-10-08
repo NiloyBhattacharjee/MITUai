@@ -1,0 +1,21 @@
+# Secrets: real values live in .env locally and in the ENV_FILE GitHub secret for deploys
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+
+# Data: the shop's database and uploaded voice notes / product photos
+*.db
+*.db-journal
+*.sqlite*
+backend/media/
+
+# Build and tool output
+.venv/
+__pycache__/
+.pytest_cache/
+node_modules/
+dist/
