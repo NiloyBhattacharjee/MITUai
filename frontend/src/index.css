@@ -1,15 +1,117 @@
 @import "tailwindcss";
 
+/* Design tokens: every colour in the UI comes from here. Light by default; dark follows the system
+   unless the viewer picks one (data-theme on <html>, set by the theme switch in the sidebar). */
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans: "Geist", "Noto Sans Bengali", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  --color-canvas: #f6f6f3;      /* page background */
+  --color-surface: #ffffff;     /* cards, panels */
+  --color-subtle: #efefeb;      /* hover, tracks, inputs at rest */
+  --color-line: #e5e4de;        /* borders and dividers */
+  --color-ink: #18181b;         /* main text, primary buttons */
+  --color-muted: #5e5e66;       /* secondary text */
+  --color-faint: #93939b;       /* hints, timestamps */
+  --color-inverse: #ffffff;     /* text on ink */
+  --color-brand: #0c9467;       /* the one accent: active nav, charts, toggles, focus */
+  --color-brand-soft: #e2f4eb;  /* the shop's chat bubbles, selected states */
+  --color-ok: #0b8a5e;
+  --color-info: #2563eb;
+  --color-violet: #7c3aed;
+  --color-warn: #b45309;
+  --color-danger: #dc2626;
 }
 
-body { -webkit-font-smoothing: antialiased; }
+:root { color-scheme: light; }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --color-canvas: #0d0d0f;
+    --color-surface: #151518;
+    --color-subtle: #1e1e22;
+    --color-line: #2a2a2f;
+    --color-ink: #ededf0;
+    --color-muted: #a3a3ac;
+    --color-faint: #6c6c75;
+    --color-inverse: #0d0d0f;
+    --color-brand: #34d399;
+    --color-brand-soft: #10291f;
+    --color-ok: #34d399;
+    --color-info: #60a5fa;
+    --color-violet: #a78bfa;
+    --color-warn: #fbbf24;
+    --color-danger: #f87171;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-canvas: #0d0d0f;
+  --color-surface: #151518;
+  --color-subtle: #1e1e22;
+  --color-line: #2a2a2f;
+  --color-ink: #ededf0;
+  --color-muted: #a3a3ac;
+  --color-faint: #6c6c75;
+  --color-inverse: #0d0d0f;
+  --color-brand: #34d399;
+  --color-brand-soft: #10291f;
+  --color-ok: #34d399;
+  --color-info: #60a5fa;
+  --color-violet: #a78bfa;
+  --color-warn: #fbbf24;
+  --color-danger: #f87171;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv11", "ss01";
+}
+
+:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline: none; }
+
+/* Building blocks, so pages read as layout instead of long class lists. */
+@utility card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 1rem;
+}
+@utility field {
+  @apply w-full h-10 rounded-xl border border-line bg-surface px-3.5 text-sm text-ink placeholder:text-faint outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/15;
+}
+@utility btn {
+  @apply inline-flex shrink-0 items-center justify-center gap-2 h-9 rounded-xl px-3.5 text-sm font-medium whitespace-nowrap transition active:scale-[.98] disabled:pointer-events-none disabled:opacity-40;
+}
+@utility btn-primary {
+  @apply bg-ink text-inverse hover:opacity-85;
+}
+@utility btn-secondary {
+  @apply border border-line bg-surface text-ink hover:bg-subtle;
+}
+@utility btn-ghost {
+  @apply text-muted hover:bg-subtle hover:text-ink;
+}
+@utility chip {
+  @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap;
+}
+
+/* Hide number-input spinners: stock and price cells are typed, not clicked. */
+input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type="number"] { -moz-appearance: textfield; }
 
 @media (prefers-reduced-motion: no-preference) {
   html { scroll-behavior: smooth; }
-  .enter { animation: enter .25s ease-out both; }
+  .enter { animation: enter .3s cubic-bezier(.2, .8, .2, 1) both; }
   .grow { animation: grow .5s cubic-bezier(.2, .8, .2, 1) both; transform-box: fill-box; transform-origin: bottom; }
+  .slide-in { animation: slide-in .3s cubic-bezier(.2, .8, .2, 1) both; }
+  .fade-in { animation: fade-in .2s ease-out both; }
 }
-@keyframes enter { from { opacity: 0; transform: translateY(6px); } }
+@keyframes enter { from { opacity: 0; transform: translateY(4px); } }
 @keyframes grow { from { transform: scaleY(0); } }
+@keyframes slide-in { from { transform: translateX(100%); } }
+@keyframes fade-in { from { opacity: 0; } }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, Icon, usePoll } from './App.jsx'
+import { api, usePoll } from './App.jsx'
+import { Icon, cx } from './ui.jsx'
 
 const EXAMPLES = [
   { lang: 'Bangla', topic: 'Product & price', text: 'ভাই, কালো পাঞ্জাবি আছে? দাম কত?' },
@@ -8,21 +9,26 @@ const EXAMPLES = [
   { lang: 'Banglish', topic: 'Order status', text: 'amar order kothay? 01712345678' },
   { lang: 'English', topic: 'Human handoff', text: 'I want to talk to a real person' },
 ]
-const LANG_STYLE = { Bangla: 'bg-emerald-50 text-emerald-700', Banglish: 'bg-violet-50 text-violet-700', English: 'bg-sky-50 text-sky-700' }
+const LANG_STYLE = { Bangla: 'bg-ok/10 text-ok', Banglish: 'bg-violet/10 text-violet', English: 'bg-info/10 text-info' }
 
 export const time = (iso) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
-export function Bubble({ m, mine }) {
+// wa: WhatsApp colours for the simulator's phone; otherwise the dashboard's theme colours.
+export function Bubble({ m, mine, wa }) {
+  const look = wa
+    ? (mine ? 'bg-[#d9fdd3] text-zinc-900 rounded-tr-sm shadow-sm' : 'bg-white text-zinc-900 rounded-tl-sm shadow-sm')
+    : !mine ? 'bg-surface border border-line rounded-bl-md'
+      : m.role === 'human' ? 'bg-warn/10 rounded-br-md' : 'bg-brand-soft rounded-br-md'
   return (
-    <div className={`enter flex ${mine ? 'justify-end' : 'justify-start'}`}>
-      <div className={`max-w-[80%] rounded-xl px-3 py-1.5 shadow-sm text-sm text-zinc-900 whitespace-pre-wrap break-words transition-opacity ${m.pending ? 'opacity-60' : ''} ${mine ? 'bg-[#d9fdd3] rounded-tr-sm' : 'bg-white rounded-tl-sm'}`}>
-        {m.role === 'human' && <div className="text-[11px] font-semibold text-amber-700 mb-0.5">Shop team{m.author && ` · ${m.author}`}</div>}
+    <div className={cx('enter flex', mine ? 'justify-end' : 'justify-start')}>
+      <div className={cx('max-w-[80%] rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap break-words transition-opacity', m.pending && 'opacity-60', look)}>
+        {m.role === 'human' && <div className={cx('text-[11px] font-semibold mb-0.5', wa ? 'text-amber-700' : 'text-warn')}>Shop team{m.author && ` · ${m.author}`}</div>}
         {m.audio_url && <audio controls src={m.audio_url} className="h-9 max-w-full my-1" />}
-        {m.image_url && <img src={m.image_url} alt={m.text} className="rounded-lg max-h-72 my-1" />}
+        {m.image_url && <img src={m.image_url} alt={m.text} className="rounded-xl max-h-72 my-1" />}
         {m.is_voice
-          ? <div className="flex gap-1.5 text-xs italic text-zinc-500"><Icon name="mic" className="w-3.5 h-3.5 shrink-0 mt-0.5" />{m.text || '(no transcript)'}</div>
+          ? <div className={cx('flex gap-1.5 text-xs italic', wa ? 'text-zinc-500' : 'text-muted')}><Icon name="mic" className="w-3.5 h-3.5 shrink-0 mt-0.5" />{m.text || '(no transcript)'}</div>
           : m.text}
-        <div className="text-[10px] text-zinc-400 text-right mt-0.5 tabular-nums">{time(m.created_at)}</div>
+        <div className={cx('text-[10px] text-right mt-1 tabular-nums', wa ? 'text-zinc-400' : 'text-faint')}>{time(m.created_at)}</div>
       </div>
     </div>
   )
@@ -104,36 +110,36 @@ export default function Simulator() {
   const restart = () => { setStarted(null); setData({ messages: [], bot_enabled: true }); setStatus('') }
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8 md:py-12 grid lg:grid-cols-[1fr_400px] gap-10 lg:gap-16 items-start">
+    <div className="max-w-6xl mx-auto px-4 py-8 md:py-14 grid lg:grid-cols-[1fr_400px] gap-10 lg:gap-16 items-start">
       <section className="enter">
-        <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/20 px-3 py-1 text-xs font-medium">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Live demo
+        <span className="chip bg-brand-soft text-brand px-3! py-1!">
+          <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse" /> Live demo
         </span>
-        <h1 className="mt-4 text-3xl md:text-4xl font-semibold tracking-tight text-zinc-900">
+        <h1 className="mt-5 text-3xl md:text-[2.5rem] md:leading-[1.1] font-semibold tracking-tight">
           Chat with {shop.agent_name}, {shop.name}'s AI assistant
         </h1>
-        <p className="mt-3 text-zinc-500 max-w-xl">
+        <p className="mt-4 text-muted max-w-xl leading-relaxed">
           Message in Bangla, English or Banglish, or hold the mic to send a voice note. This runs the exact same agent as real WhatsApp messages, and every chat shows up live in the dashboard.
         </p>
 
-        <h2 className="mt-10 mb-3 text-sm font-semibold text-zinc-900">Try a message</h2>
+        <h2 className="mt-12 mb-4 text-sm font-medium">Try a message</h2>
         <div className="grid sm:grid-cols-2 gap-3">
           {EXAMPLES.map((ex) => (
             <button key={ex.text} disabled={!started} onClick={() => send(ex.text)}
-              className="group text-left bg-white rounded-2xl p-4 ring-1 ring-zinc-950/5 shadow-sm transition enabled:hover:ring-emerald-500/40 enabled:hover:shadow-md enabled:active:scale-[.99] disabled:opacity-50 disabled:cursor-not-allowed">
+              className="card text-left p-4 transition enabled:hover:border-brand/50 enabled:hover:-translate-y-0.5 enabled:active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-medium text-zinc-500">{ex.topic}</span>
-                <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-medium ${LANG_STYLE[ex.lang]}`}>{ex.lang}</span>
+                <span className="text-xs text-muted">{ex.topic}</span>
+                <span className={cx('chip text-[10px]!', LANG_STYLE[ex.lang])}>{ex.lang}</span>
               </div>
-              <div className="mt-2 text-sm text-zinc-900">{ex.text}</div>
+              <div className="mt-2.5 text-sm">{ex.text}</div>
             </button>
           ))}
         </div>
-        {!started && <p className="mt-3 text-xs text-zinc-400">Start a chat on the phone first.</p>}
+        {!started && <p className="mt-4 text-xs text-faint">Start a chat on the phone first.</p>}
       </section>
 
       <div className="enter order-first lg:order-none mx-auto w-full max-w-[400px] rounded-[3rem] bg-zinc-900 p-3 shadow-2xl shadow-zinc-950/20 ring-1 ring-zinc-950/10">
-        <div className="relative h-[min(760px,80vh)] rounded-[2.4rem] overflow-hidden bg-[#efeae2] flex flex-col">
+        <div className="relative h-[min(760px,80vh)] rounded-[2.4rem] overflow-hidden bg-[#efeae2] text-zinc-900 [color-scheme:light] flex flex-col">
           <div className="absolute top-2 left-1/2 -translate-x-1/2 w-24 h-6 rounded-full bg-zinc-900 z-10" aria-hidden="true" />
           <header className="bg-[#008069] text-white pt-10 pb-3 px-4 flex items-center gap-3">
             <div className="w-9 h-9 rounded-full bg-white/20 grid place-items-center font-semibold">{shop.name[0]}</div>
@@ -162,7 +168,7 @@ export default function Simulator() {
                 <div className="mx-auto w-fit max-w-[85%] text-center rounded-lg bg-[#fff5c4] text-[11px] text-zinc-600 px-3 py-1.5 shadow-sm">
                   Chatting as {started}. Replies come from an AI assistant.
                 </div>
-                {data.messages.map((m) => <Bubble key={m.id} m={m} mine={m.role === 'user'} />)}
+                {data.messages.map((m) => <Bubble key={m.id} m={m} mine={m.role === 'user'} wa />)}
                 {typing && <Typing />}
                 {status && <div className="mx-auto w-fit rounded-full bg-white/80 px-3 py-1 text-xs text-zinc-600 shadow-sm">{status}</div>}
                 <div ref={bottom} />
