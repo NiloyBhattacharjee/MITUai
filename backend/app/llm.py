@@ -74,6 +74,7 @@ class AnthropicLLM:
             r = self.client.beta.messages.create(
                 model=self.model, max_tokens=16000, system=system, messages=messages, tools=tools,
                 output_config={"effort": self.effort},
+                cache_control={"type": "ephemeral"},  # re-sent tools+system+history bill at 0.1x within 5 min
                 betas=["server-side-fallback-2026-07-01"], fallbacks="default",  # retry safety-classifier refusals on another model
             )
             if usage is not None:  # r.model: a refusal fallback may have answered with another model
