@@ -1,5 +1,4 @@
 import csv
-import hmac
 import io
 import logging
 import re
@@ -14,10 +13,11 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from sqlalchemy import func, select, update
 
-from . import agent, hours, messenger, options, pipeline, tools, whatsapp
-from .config import ADMIN_PASSWORD, BUSINESS, CURRENCY, MEDIA_DIR, STAFF, cents
+from . import agent, auth, hours, messenger, options, pipeline, tenancy, tools, whatsapp
+from .config import MEDIA_DIR, cents
 from .db import (BOOKING_STATUSES, ORDER_STATUSES, Approval, Booking, Conversation, LlmUsage, MenuItem, Message, Order, Session,
-                 Setting, ToolCall, init_db, now)
+                 Setting, Shop, ToolCall, init_db, now)
+from .tenancy import cfg
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 init_db()
@@ -26,10 +26,14 @@ init_db()
 def every_minute():
     while True:
         sleep(60)
-        try:
-            pipeline.remind_unconfirmed()
-        except Exception:
-            logging.exception("reminders failed")
+        with Session() as db:
+            shops = db.scalars(select(Shop)).all()
+        for shop in shops:
+            try:
+                with tenancy.scope(shop):
+                    pipeline.remind_unconfirmed()
+            except Exception:
+                logging.exception("reminders failed for %s", shop.id)
 
 
 @asynccontextmanager
@@ -38,7 +42,26 @@ async def lifespan(app):
     threading.Thread(target=every_minute, daemon=True).start()
     yield
 
-app = FastAPI(title=f"{BUSINESS['name']} AI agent", lifespan=lifespan)
+
+class SignedIn:
+    """ASGI middleware: an /api request with a live session runs in that café's scope (see tenancy.py),
+    so every query in it only sees that café's rows."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope["path"].startswith("/api/"):
+            # ponytail: one small indexed lookup on the event loop per request; move to a thread if it ever shows up in latency.
+            found = auth.session(dict(scope["headers"]).get(b"x-session", b"").decode())
+            if found:
+                with tenancy.scope(*found):
+                    return await self.app(scope, receive, send)
+        await self.app(scope, receive, send)
+
+
+app = FastAPI(title="Mitu", lifespan=lifespan)
+app.add_middleware(SignedIn)
 app.include_router(whatsapp.router)
 app.include_router(messenger.router)
 app.mount("/media", StaticFiles(directory=MEDIA_DIR), name="media")
@@ -59,40 +82,77 @@ def messages_of(db, conv_id: str) -> list[dict]:
     return [message_dict(m) for m in db.scalars(select(Message).where(Message.conversation_id == conv_id).order_by(Message.id))]
 
 
-@app.get("/api/business")
-def business():
-    return {"name": BUSINESS["name"], "agent_name": BUSINESS["agent_name"], "currency": CURRENCY}
-
-
-# --- dashboard login ---------------------------------------------------------------------------
-
-if ADMIN_PASSWORD in ("", "admin", "change-me"):
-    raise RuntimeError("Set ADMIN_PASSWORD in .env to a real password before starting the server.")
+# --- signing in ----------------------------------------------------------------------------------
 
 MAX_WRONG, LOCKOUT_SECONDS = 10, 15 * 60
 _wrong: dict[str, list[float]] = {}  # client IP -> times of recent wrong passwords
 # ponytail: in-memory, one process; it resets on restart, which only gives a guesser another 10 tries.
 
 
-def admin(request: Request, x_admin_password: str = Header("")) -> str:
-    """The signed-in person's name. Each owner/staff password is different, so the password says who it is.
-    10 wrong passwords from one IP lock that IP out for 15 minutes (per IP, so a guesser can't lock the owner out)."""
+class Login(BaseModel):
+    shop: str = Field(min_length=1, max_length=40)  # the café's ID, e.g. little-fern
+    password: str = Field(min_length=1, max_length=200)
+
+
+@app.post("/api/login")
+def login(body: Login, request: Request):
+    """Each person has their own password, so the password says who it is. 10 wrong tries from one IP lock that IP
+    out for 15 minutes (per IP, so a guesser can't lock the owner out)."""
     ip = request.client.host if request.client else "?"
     recent = [t for t in _wrong.get(ip, []) if t > monotonic() - LOCKOUT_SECONDS]
     if len(recent) >= MAX_WRONG:
         raise HTTPException(429, "Too many wrong passwords. Try again in 15 minutes.")
-    who = [name for name, pw in STAFF.items() if hmac.compare_digest(x_admin_password.encode(), pw.encode())]
-    if not who:
-        if x_admin_password:  # a guess, not just a signed-out page loading
-            _wrong[ip] = recent + [monotonic()]
-        raise HTTPException(401, "wrong password")
-    return who[0]
+    with Session() as db:
+        found = auth.log_in(db, body.shop.strip().lower(), body.password)
+    if not found:
+        _wrong[ip] = recent + [monotonic()]
+        raise HTTPException(401, "Wrong café ID or password")
+    token, person = found
+    return {"token": token, "name": person.name, "shop": person.shop_id}
 
 
-dash = Depends(admin)
+@app.post("/api/logout")
+def logout(x_session: str = Header("")):
+    auth.log_out(x_session)
+    return {"ok": True}
+
+
+def signed_in() -> str:
+    """The signed-in person's name (the middleware set the café and the person from the session)."""
+    if (who := tenancy.staff()) is None:
+        raise HTTPException(401, "Sign in first")
+    return who
+
+
+dash = Depends(signed_in)
+
+
+@app.get("/api/me")
+def me(who: str = dash):
+    return {"name": who, "shop": tenancy.shop_id()}
+
+
+@app.get("/api/business", dependencies=[dash])
+def business():
+    c = cfg()
+    return {"id": tenancy.shop_id(), "name": c["name"], "agent_name": c["agent_name"], "currency": c.get("currency", "$")}
 
 
 # --- simulator (signed in only: every message runs the paid LLM and can place real orders) ------
+
+def in_this_cafe(fn, *args):
+    """A background job that runs in the café the request came from."""
+    shop = tenancy.shop()
+
+    def run():
+        with tenancy.scope(shop):
+            fn(*args)
+    return run
+
+
+def sim_id(phone: str) -> str:
+    return f"{tenancy.shop_id()}:sim-{phone}"
+
 
 class SimMessage(BaseModel):
     phone: str = Field(min_length=3, max_length=20)
@@ -101,7 +161,7 @@ class SimMessage(BaseModel):
 
 @app.post("/api/sim/message", dependencies=[dash])
 def sim_message(body: SimMessage, background: BackgroundTasks):
-    background.add_task(pipeline.handle_text, f"sim-{body.phone}", "sim", body.phone, body.text)
+    background.add_task(in_this_cafe(pipeline.handle_text, sim_id(body.phone), "sim", body.phone, body.text))
     return {"ok": True}
 
 
@@ -112,7 +172,7 @@ async def sim_voice(background: BackgroundTasks, phone: str = Form(min_length=3,
         raise HTTPException(400, "empty or too large")
     ext = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/mpeg": "mp3"}.get(
         (file.content_type or "").split(";")[0], "webm")
-    background.add_task(pipeline.handle_voice, f"sim-{phone}", "sim", phone, data, ext)
+    background.add_task(in_this_cafe(pipeline.handle_voice, sim_id(phone), "sim", phone, data, ext))
     return {"ok": True}
 
 
@@ -122,20 +182,15 @@ async def sim_photo(background: BackgroundTasks, phone: str = Form(min_length=3,
     data = await file.read()
     if not data or len(data) > 5_000_000:
         raise HTTPException(400, "empty or too large")
-    background.add_task(pipeline.handle_photo, f"sim-{phone}", "sim", phone, data, file.content_type or "", caption)
+    background.add_task(in_this_cafe(pipeline.handle_photo, sim_id(phone), "sim", phone, data, file.content_type or "", caption))
     return {"ok": True}
 
 
 @app.get("/api/sim/{phone}/messages", dependencies=[dash])
 def sim_messages(phone: str):
     with Session() as db:
-        conv = db.get(Conversation, f"sim-{phone}")
-        return {"messages": messages_of(db, f"sim-{phone}"), "bot_enabled": conv.bot_enabled if conv else True}
-
-
-@app.get("/api/me")
-def me(who: str = dash):
-    return {"name": who}
+        conv = db.get(Conversation, sim_id(phone))
+        return {"messages": messages_of(db, sim_id(phone)), "bot_enabled": conv.bot_enabled if conv else True}
 
 
 @app.get("/api/conversations", dependencies=[dash])
@@ -182,6 +237,12 @@ class Reply(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
 
 
+def _item(db, code: str) -> MenuItem:
+    if not (i := tools.find_item(db, code)):
+        raise HTTPException(404)
+    return i
+
+
 def _get(db, model, key):
     obj = db.get(model, key)
     if not obj:
@@ -203,7 +264,7 @@ def human_reply(conv_id: str, body: Reply, who: str = dash):
 
 @app.get("/api/saved-replies", dependencies=[dash])
 def saved_replies():
-    return BUSINESS.get("saved_replies", [])
+    return cfg().get("saved_replies", [])
 
 
 class BotToggle(BaseModel):
@@ -228,7 +289,7 @@ ACTIVE = ["new", "preparing", "ready"]
 
 def order_row(o: Order) -> dict:
     return {"id": o.id, "customer_name": o.customer_name, "phone": o.phone, "fulfilment": o.fulfilment,
-            "fulfilment_label": tools.FULFILMENT.get(o.fulfilment, {}).get("label", o.fulfilment), "address": o.address,
+            "fulfilment_label": tools.fulfilment().get(o.fulfilment, {}).get("label", o.fulfilment), "address": o.address,
             "ready_at": iso(o.ready_at), "items": [tools.line_text(line) for line in o.items], "notes": o.notes, "total": o.total,
             "payment_method": o.payment_method, "status": o.status, "created_at": iso(o.created_at), "conversation_id": o.conversation_id}
 
@@ -281,7 +342,7 @@ def set_order_status(order_id: int, body: Status):
         old, o.status = o.status, body.status
         db.commit()
         note = None
-        msgs = BUSINESS["messages"]
+        msgs = cfg()["messages"]
         text = msgs.get(f"order_{body.status}_{o.fulfilment}") or msgs.get(f"order_{body.status}")
         if body.status != old and text and (conv := db.get(Conversation, o.conversation_id or "")):
             note = pipeline.send_update(db, conv, text.format(order_id=o.id))
@@ -302,7 +363,9 @@ def get_settings():
 def put_settings(body: Settings):
     """orders_paused: the assistant stops taking orders (bookings and questions carry on)."""
     with Session() as db:
-        db.merge(Setting(key="orders_paused", value=body.orders_paused))
+        row = db.scalar(select(Setting).where(Setting.key == "orders_paused")) or Setting(key="orders_paused")
+        row.value = body.orders_paused
+        db.add(row)
         db.commit()
     return body
 
@@ -333,7 +396,7 @@ def set_booking_status(booking_id: int, body: Status):
         db.commit()
         note = None
         if body.status == "cancelled" and old != "cancelled" and (conv := db.get(Conversation, b.conversation_id or "")):
-            text = BUSINESS["messages"]["booking_cancelled"].format(when=hours.label(hours.to_local(b.at)), party_size=b.party_size)
+            text = cfg()["messages"]["booking_cancelled"].format(when=hours.label(hours.to_local(b.at)), party_size=b.party_size)
             note = pipeline.send_update(db, conv, text)
     return {"ok": True, "note": note}
 
@@ -373,7 +436,7 @@ def decide(approval_id: int, body: Decision, who: str = dash):
         a = _get(db, Approval, approval_id)
         if not done:
             raise HTTPException(409, f"Already {a.status} by {a.decided_by}.")
-        msgs = BUSINESS["messages"]
+        msgs = cfg()["messages"]
         if body.decision == "approved" and a.kind == "large_booking" and a.details:
             d, at = a.details, datetime.fromisoformat(a.details["at"])
             b = Booking(conversation_id=a.conversation_id, customer_name=d["customer_name"], phone=d["phone"], party_size=d["party_size"],
@@ -397,7 +460,7 @@ def item_row(i: MenuItem) -> dict:
             "options": options.lines(i.options), "dietary": i.dietary, "allergens": i.allergens, "aliases": i.aliases,
             "available": i.available,
             # ?v= so the browser shows a replaced photo
-            "photo_url": f"/media/menu/{photo.name}?v={int(photo.stat().st_mtime)}" if photo else None}
+            "photo_url": f"/media/{photo.relative_to(MEDIA_DIR).as_posix()}?v={int(photo.stat().st_mtime)}" if photo else None}
 
 
 @app.get("/api/menu", dependencies=[dash])
@@ -459,7 +522,7 @@ def add_item(body: NewItem):
 @app.patch("/api/menu/{item_id}", dependencies=[dash])
 def edit_item(item_id: str, body: ItemFields):
     with Session() as db:
-        i = _get(db, MenuItem, item_id)
+        i = _item(db, item_id)
         body.apply(i)
         db.commit()
         return item_row(i)
@@ -469,8 +532,8 @@ def edit_item(item_id: str, body: ItemFields):
 def delete_item(item_id: str):
     """Past orders keep their item names; an unconfirmed quote with it fails as "unknown item"."""
     with Session() as db:
-        i = _get(db, MenuItem, item_id)
-        for photo in (MEDIA_DIR / "menu").glob(f"{i.id}.*"):
+        i = _item(db, item_id)
+        for photo in tools.photo_folder().glob(f"{i.id}.*"):
             photo.unlink()
         db.delete(i)
         db.commit()
@@ -484,9 +547,9 @@ async def upload_photo(item_id: str, file: UploadFile):
     if not ext or not data or len(data) > 5_000_000:
         raise HTTPException(400, "Upload a JPG or PNG photo under 5 MB.")
     with Session() as db:
-        i = _get(db, MenuItem, item_id)
-        folder = MEDIA_DIR / "menu"
-        folder.mkdir(exist_ok=True)
+        i = _item(db, item_id)
+        folder = tools.photo_folder()
+        folder.mkdir(parents=True, exist_ok=True)
         for old in folder.glob(f"{i.id}.*"):
             old.unlink()
         (folder / f"{i.id}.{ext}").write_bytes(data)
@@ -546,6 +609,6 @@ def analytics(days: int = Query(30, ge=1, le=365)):
         "previous": {k: v for k, v in prev.items() if not k.startswith("_")},
         "daily": [{"date": d.isoformat(), **v} for d, v in by_day.items()],
         "top_items": _count(((line["name"], line["unit_price"] * line["quantity"], line["quantity"]) for o in live for line in o.items), top=5),
-        "fulfilment": _count(((o.fulfilment, o.total, 1) for o in live), tools.FULFILMENT),
+        "fulfilment": _count(((o.fulfilment, o.total, 1) for o in live), tools.fulfilment()),
         "status": [{"status": s, "count": sum(o.status == s for o in cur["_orders"])} for s in ORDER_STATUSES],
     }

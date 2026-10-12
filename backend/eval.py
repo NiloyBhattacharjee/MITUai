@@ -23,13 +23,14 @@ import re  # noqa: E402
 import yaml  # noqa: E402
 from sqlalchemy import func, select  # noqa: E402
 
-from app import agent, hours, tools  # noqa: E402
-from app.config import BUSINESS, LLM_PROVIDER, MEDIA_DIR  # noqa: E402
-from app.db import Approval, Base, Booking, Conversation, LlmUsage, Order, Session, engine, new_item, now  # noqa: E402
+from app import agent, hours, shops, tenancy, tools  # noqa: E402
+from app.config import BUSINESS_FILE, LLM_PROVIDER  # noqa: E402
+from app.db import Approval, Base, Booking, Conversation, LlmUsage, Order, Session, engine, now  # noqa: E402
 
 CASES = Path(__file__).parent / "evals" / "cases.yaml"
 PHONE = "0412345678"
-CONV = f"sim-{PHONE}"
+CAFE = "eval-cafe"
+CONV = f"{CAFE}:sim-{PHONE}"
 TURN_KEYS = {"say", "calls", "no_calls", "reply", "no_reply", "orders", "bookings"}
 CASE_KEYS = {"name", "turns", "setup_order", "setup_booking", "then"}
 THEN_KEYS = {"needs_human", "called", "called_any", "order", "booking", "approvals"}
@@ -39,7 +40,7 @@ def café_at_ten():
     """A fixed UTC offset that makes the café's local time 10:00 now, so messages' timestamps and the tools agree."""
     utc = datetime.now(timezone.utc)
     minutes = (10 * 60 - (utc.hour * 60 + utc.minute) + 12 * 60) % (24 * 60) - 12 * 60  # within ±12 hours
-    hours.TZ = timezone(timedelta(minutes=minutes))
+    hours.tz = lambda: timezone(timedelta(minutes=minutes))
 
 
 def load_cases(words: list[str] = ()) -> list[dict]:
@@ -48,12 +49,14 @@ def load_cases(words: list[str] = ()) -> list[dict]:
 
 
 def fresh_db(case: dict):
+    """A throwaway database with one café from business.yaml; returns it."""
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
-    (MEDIA_DIR / "menu").mkdir(parents=True, exist_ok=True)
-    (MEDIA_DIR / "menu" / "M01.jpg").write_bytes(b"JPEG")  # so send_item_photo has something to send
     with Session() as db:
-        db.add_all(new_item(i) for i in BUSINESS["menu"])
+        shop = shops.create(db, CAFE, shops.read(BUSINESS_FILE), {})
+    with tenancy.scope(shop), Session() as db:
+        tools.photo_folder().mkdir(parents=True, exist_ok=True)
+        (tools.photo_folder() / "M01.jpg").write_bytes(b"JPEG")  # so send_item_photo has something to send
         if "setup_order" in case or "setup_booking" in case:
             db.add(Conversation(id=CONV, channel="sim", phone=PHONE))
         if "setup_order" in case:
@@ -66,11 +69,16 @@ def fresh_db(case: dict):
             db.add(Booking(**{"conversation_id": CONV, "customer_name": "Olivia Chen", "phone": PHONE, "party_size": 2,
                               "at": hours.to_utc(tomorrow_noon), **case["setup_booking"]}))
         db.commit()
+    return shop
 
 
 def run_case(case: dict) -> tuple[list[str], list[str], float]:
     """(problems, transcript, cost in $). No problems means the case passed."""
-    fresh_db(case)
+    with tenancy.scope(fresh_db(case)):
+        return _run(case)
+
+
+def _run(case: dict) -> tuple[list[str], list[str], float]:
     calls, problems, transcript = [], [], []
     real_run_tool = tools.run_tool
 

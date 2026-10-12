@@ -221,7 +221,7 @@ export function Orders() {
   const [orders, refresh, setOrders] = useLive('/api/orders', 5000)
   const [filter, setFilter] = useState('all')
   const exportCsv = async () => {
-    const res = await fetch('/api/orders/export.csv', { headers: { 'X-Admin-Password': localStorage.getItem('adminPassword') || '' } })
+    const res = await fetch('/api/orders/export.csv', { headers: { 'X-Session': localStorage.getItem('session') || '' } })
     if (!res.ok) return toast('Export failed. Try again.')
     const a = Object.assign(document.createElement('a'),
       { href: URL.createObjectURL(await res.blob()), download: `orders-${new Date().toISOString().slice(0, 10)}.csv` })

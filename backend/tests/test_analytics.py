@@ -22,7 +22,7 @@ def test_analytics_totals_exclude_cancelled_and_split_periods(db):
     db.commit()
     assert client.get("/api/analytics").status_code == 401
 
-    r = client.get("/api/analytics?days=7", headers={"X-Admin-Password": "pw"}).json()
+    r = client.get("/api/analytics?days=7", headers={"X-Session": "pw"}).json()
     assert r["current"] == {**r["current"], "revenue": 3000, "orders": 2, "cancelled": 1, "avg_order": 1500, "bookings": 1, "covers": 4}
     assert r["previous"]["revenue"] == 3000
     assert len(r["daily"]) == 7 and sum(d["revenue"] for d in r["daily"]) == 3000
@@ -45,7 +45,7 @@ def test_ai_cost_recorded_per_call_and_shown_on_overview(db, monkeypatch):
     respond("sim-8", "sim", "8", "do you have oat milk?")
     # (8500 in * $2 + 300 out * $10 + 1000 cache read * $0.20 + 2000 cache write * $2.50) / 1M
     expected = (8500 * 2 + 300 * 10 + 1000 * 0.2 + 2000 * 2.5) / 1_000_000
-    r = client.get("/api/analytics?days=7", headers={"X-Admin-Password": "pw"}).json()["current"]
+    r = client.get("/api/analytics?days=7", headers={"X-Session": "pw"}).json()["current"]
     assert abs(r["ai_cost_usd"] - round(expected, 4)) < 1e-9 and r["ai_tokens"] == 8800
     assert llm.cost_usd(llm._usage("claude-opus-5-5", 1_000_000)) == 4  # longest name wins over claude-opus-5
     assert llm.cost_usd(llm._usage("ollama:qwen3:4b", 5000, 500)) == 0 and llm.cost_usd(llm._usage("mystery", 1)) is None

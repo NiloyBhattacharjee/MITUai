@@ -7,15 +7,16 @@ from collections import defaultdict
 from sqlalchemy import select
 
 from . import hours, llm, notify, tools
-from .config import BUSINESS, MEDIA_DIR
+from .config import MEDIA_DIR
 from .db import Conversation, LlmUsage, Message, Session, ToolCall, now
+from .tenancy import cfg
 
 log = logging.getLogger(__name__)
 HISTORY_LIMIT = 30
 _locks = defaultdict(threading.Lock)  # one agent turn at a time per chat (customers send bursts)
 
 def system_prompt(first_message: bool) -> str:
-    b = BUSINESS
+    b = cfg()
     intro = (f"This is the customer's first message. Start your reply by introducing yourself as {b['agent_name']}, "
              f"{b['name']}'s AI assistant, then answer.") if first_message else "Do not re-introduce yourself."
     return f"""You are {b['agent_name']}, the AI assistant of {b['name']}, a café. You chat with customers on WhatsApp, Facebook Messenger and Instagram: you answer questions, take pickup and delivery orders for today, and book tables.
@@ -115,11 +116,11 @@ def respond(conv_id: str, channel: str, phone: str, text: str, is_voice=False, a
             return result
 
         try:
-            reply = llm.get_llm().run(system_prompt(first), build_history(recent[::-1]), tools.SPECS, call_tool, usage)
+            reply = llm.get_llm().run(system_prompt(first), build_history(recent[::-1]), tools.specs(), call_tool, usage)
         except Exception:
             log.exception("agent failed for %s", conv_id)
             notify.flag_for_human(db, conv, "Bot error, please check this chat")
-            reply = BUSINESS["messages"]["error"]
+            reply = cfg()["messages"]["error"]
         db.add_all(steps)
         db.add_all(LlmUsage(conversation_id=conv_id, message_id=user_msg.id, cost_usd=llm.cost_usd(u), **u) for u in usage)
         db.commit()
@@ -128,5 +129,5 @@ def respond(conv_id: str, channel: str, phone: str, text: str, is_voice=False, a
                      sum(u["input_tokens"] for u in usage), sum(u["output_tokens"] for u in usage),
                      sum(llm.cost_usd(u) or 0 for u in usage))
         if not reply and conv.needs_human:
-            reply = BUSINESS["messages"]["handoff"]
+            reply = cfg()["messages"]["handoff"]
         return add_message(db, conv, "assistant", reply) if reply else None

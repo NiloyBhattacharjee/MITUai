@@ -4,7 +4,8 @@ import smtplib
 import threading
 from email.message import EmailMessage
 
-from .config import BUSINESS, env
+from .config import env
+from .tenancy import cfg
 
 log = logging.getLogger(__name__)
 
@@ -16,12 +17,12 @@ def flag_for_human(db, conv, reason: str, stop_bot=False):
         conv.bot_enabled = False
     db.commit()
     if newly_flagged:  # one email per handoff, not one per message
-        email_owner(f"{BUSINESS['agent_name']} needs a human: {conv.phone}",
+        email_owner(f"{cfg()['agent_name']} needs a human: {conv.phone}",
                     f"The chat with {conv.phone} ({conv.channel}) needs a reply from the team.\n\nReason: {reason}")
 
 
 def email_owner(subject: str, body: str):
-    to, user = env("ALERT_EMAIL"), env("SMTP_USER")
+    to, user = cfg().get("alert_email") or env("ALERT_EMAIL"), env("SMTP_USER")  # each café can have its own
     if not (to and user):
         return
     msg = EmailMessage()

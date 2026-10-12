@@ -8,7 +8,7 @@ export async function api(path, opts = {}) {
   const res = await fetch(path, {
     ...opts,
     headers: {
-      'X-Admin-Password': localStorage.getItem('adminPassword') || '',
+      'X-Session': localStorage.getItem('session') || '',
       ...(opts.body && !(opts.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
       ...opts.headers,
     },
@@ -93,19 +93,22 @@ const PAGES = [
   { id: 'menu', label: 'Menu', el: <Menu /> },
 ]
 
-function Login({ shop, onDone }) {
+// Sign in with the café's ID and your own password; the session token goes with every request after that.
+function Login({ onDone }) {
+  const [shopId, setShopId] = useState(() => localStorage.getItem('shop') || '')
   const [pw, setPw] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const submit = async (e) => {
     e.preventDefault()
     setBusy(true)
-    localStorage.setItem('adminPassword', pw)
     try {
-      await api('/api/me')
+      const r = await api('/api/login', { method: 'POST', body: JSON.stringify({ shop: shopId, password: pw }) })
+      localStorage.setItem('session', r.token)
+      localStorage.setItem('shop', r.shop)
       onDone()
     } catch (err) {
-      setError(err.status === 401 ? 'Wrong password. Try again.' : err.status === 429 ? 'Too many wrong passwords. Try again in 15 minutes.' : 'Cannot reach the server.')
+      setError(err.status === 401 ? 'Wrong café ID or password. Try again.' : err.status === 429 ? 'Too many wrong passwords. Try again in 15 minutes.' : 'Cannot reach the server.')
     }
     setBusy(false)
   }
@@ -119,15 +122,18 @@ function Login({ shop, onDone }) {
           <h1 className="text-4xl font-semibold tracking-tight leading-[1.1]">Your café's AI assistant, and every order and booking it takes.</h1>
           <p className="mt-5 text-white/60 leading-relaxed">Orders for the kitchen, table bookings and every WhatsApp, Messenger and Instagram chat in one place. Step in whenever a customer needs a person.</p>
         </div>
-        <p className="relative text-xs text-white/40">© {new Date().getFullYear()} {shop.name}</p>
+        <p className="relative text-xs text-white/40">© {new Date().getFullYear()} Mitu</p>
       </div>
       <div className="flex items-center justify-center p-6">
         <form onSubmit={submit} className="enter w-full max-w-sm">
           <div className="lg:hidden mb-12"><Brand /></div>
           <h2 className="text-2xl font-semibold tracking-tight">Welcome back</h2>
-          <p className="mt-1 text-sm text-muted">Sign in to the {shop.name} dashboard.</p>
-          <label htmlFor="pw" className="block mt-8 mb-2 text-sm font-medium">Password</label>
-          <input id="pw" type="password" value={pw} onChange={(e) => { setPw(e.target.value); setError('') }} autoFocus required className="field h-11!" />
+          <p className="mt-1 text-sm text-muted">Sign in to your café's dashboard.</p>
+          <label htmlFor="shop" className="block mt-8 mb-2 text-sm font-medium">Café ID</label>
+          <input id="shop" value={shopId} onChange={(e) => { setShopId(e.target.value); setError('') }} autoFocus={!shopId} required
+            autoCapitalize="none" autoCorrect="off" spellCheck="false" placeholder="little-fern" className="field h-11!" />
+          <label htmlFor="pw" className="block mt-5 mb-2 text-sm font-medium">Your password</label>
+          <input id="pw" type="password" value={pw} onChange={(e) => { setPw(e.target.value); setError('') }} autoFocus={!!shopId} required className="field h-11!" />
           {error && <p role="alert" className="mt-2 text-sm text-danger">{error}</p>}
           <button disabled={busy} className="btn btn-primary w-full h-11! mt-5">{busy ? 'Signing in…' : 'Sign in'}</button>
         </form>
@@ -152,7 +158,7 @@ function Shell({ page, shop }) {
   const waiting = convs?.filter((c) => c.needs_human).length
   const counts = { chats: waiting, approvals: asks?.filter((a) => a.status === 'pending').length }
   const current = PAGES.find((p) => p.id === page) || PAGES[0]
-  const logout = () => dispatchEvent(new Event('logout'))
+  const logout = () => { api('/api/logout', { method: 'POST' }).catch(() => {}).finally(() => dispatchEvent(new Event('logout'))) }
   const badge = (p) => counts[p.id] > 0 && (
     <span className="rounded-full bg-warn px-1.5 min-w-5 text-center text-[11px] font-semibold leading-5 text-surface"
       title={p.id === 'chats' ? `${waiting} waiting for a person` : `${counts[p.id]} to decide`}>{counts[p.id]}</span>
@@ -222,17 +228,19 @@ function Shell({ page, shop }) {
 
 export default function App() {
   const [hash, setHash] = useState(location.hash)
-  const [authed, setAuthed] = useState(!!localStorage.getItem('adminPassword'))
+  const [authed, setAuthed] = useState(!!localStorage.getItem('session'))
   const [shop, setShop] = useState({ name: 'Café' })
   useEffect(() => {
     const onHash = () => setHash(location.hash)
-    const onLogout = () => { localStorage.removeItem('adminPassword'); cache.clear(); setAuthed(false) }
+    const onLogout = () => { localStorage.removeItem('session'); cache.clear(); setAuthed(false) }
     addEventListener('hashchange', onHash)
     addEventListener('logout', onLogout)
-    api('/api/business').then((b) => { setCurrency(b.currency); setShop(b) }).catch(() => {})
     return () => { removeEventListener('hashchange', onHash); removeEventListener('logout', onLogout) }
   }, [])
-  if (!authed) return <Login shop={shop} onDone={() => setAuthed(true)} />
+  useEffect(() => {
+    if (authed) api('/api/business').then((b) => { setCurrency(b.currency); setShop(b) }).catch(() => {})
+  }, [authed])
+  if (!authed) return <Login onDone={() => setAuthed(true)} />
   if (hash === '#/simulator') return (
     <div className="min-h-dvh">
       <nav className="sticky top-0 z-20 flex items-center justify-between px-4 md:px-8 h-14 border-b border-line bg-canvas/80 backdrop-blur-lg">

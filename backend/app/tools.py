@@ -9,16 +9,33 @@ from pathlib import Path
 from sqlalchemy import select
 
 from . import hours, notify, options
-from .config import BUSINESS, MEDIA_DIR, cents, money
+from .config import MEDIA_DIR, cents, money
 from .db import APPROVAL_KINDS, Approval, Booking, Conversation, MenuItem, Message, Order, Setting, now
+from .tenancy import cfg, shop_id
 
 log = logging.getLogger(__name__)
-FULFILMENT = BUSINESS["fulfilment"]
-PAYMENTS = BUSINESS["payment_methods"]
-RES = BUSINESS["reservations"]
-PREP = timedelta(minutes=BUSINESS.get("prep_minutes", 15))
-SITTING = timedelta(minutes=RES["sitting_minutes"])
 MAX_QTY = 20
+
+
+# The café in scope's settings (its business.yaml).
+def fulfilment() -> dict:
+    return cfg()["fulfilment"]
+
+
+def payments() -> dict:
+    return cfg()["payment_methods"]
+
+
+def res() -> dict:
+    return cfg()["reservations"]
+
+
+def prep() -> timedelta:
+    return timedelta(minutes=cfg().get("prep_minutes", 15))
+
+
+def sitting() -> timedelta:
+    return timedelta(minutes=res()["sitting_minutes"])
 
 
 @dataclass
@@ -38,8 +55,17 @@ def _keywords(i: MenuItem) -> set[str]:
     return set(_tokens(" ".join([i.name, i.category, *i.aliases])))
 
 
+def find_item(db, code) -> MenuItem | None:
+    """A menu item of the café in scope by its code (M01)."""
+    return db.scalar(select(MenuItem).where(MenuItem.id == str(code)))
+
+
+def photo_folder() -> Path:
+    return MEDIA_DIR / "menu" / shop_id()
+
+
 def item_photo(item_id: str) -> Path | None:
-    return next((f for f in (MEDIA_DIR / "menu").glob(f"{item_id}.*") if is_photo(f.name)), None)
+    return next((f for f in photo_folder().glob(f"{item_id}.*") if is_photo(f.name)), None)
 
 
 def is_photo(path: str) -> bool:
@@ -77,14 +103,14 @@ def get_menu(ctx: Ctx, category: str | None = None) -> dict:
 
 
 def get_item(ctx: Ctx, item_id: str) -> dict:
-    i = ctx.db.get(MenuItem, item_id)
+    i = find_item(ctx.db, item_id)
     return item_dict(i) if i else {"error": f"No menu item with id {item_id}"}
 
 
 def send_item_photo(ctx: Ctx, item_id: str) -> dict:
     from . import pipeline  # avoid import cycle
 
-    i = ctx.db.get(MenuItem, item_id)
+    i = find_item(ctx.db, item_id)
     photo = i and item_photo(i.id)
     if not photo:
         return {"error": "No photo for this item. Describe it in words instead."}
@@ -94,7 +120,7 @@ def send_item_photo(ctx: Ctx, item_id: str) -> dict:
     except Exception:
         log.exception("sending photo %s failed", photo.name)
         return {"error": "Could not send the photo right now. Describe the item in words instead."}
-    ctx.db.add(Message(conversation_id=ctx.conv.id, role="assistant", text=caption, audio_path=f"menu/{photo.name}"))
+    ctx.db.add(Message(conversation_id=ctx.conv.id, role="assistant", text=caption, audio_path=photo.relative_to(MEDIA_DIR).as_posix()))
     ctx.db.commit()
     return {"status": "SENT", "instruction": "The photo is already in the chat. Don't describe it at length or send a link."}
 
@@ -107,7 +133,7 @@ def normalize_phone(phone: str) -> str | None:
 
 
 def orders_paused(db) -> bool:
-    s = db.get(Setting, "orders_paused")
+    s = db.scalar(select(Setting).where(Setting.key == "orders_paused"))
     return bool(s and s.value)
 
 
@@ -119,7 +145,7 @@ def line_text(line: dict) -> str:
 def _ready_at(when, errors: list) -> datetime | None:
     """"asap" or a time today like "13:30" -> local datetime, if the kitchen can have it ready then."""
     now = hours.local_now()
-    earliest = now + PREP
+    earliest = now + prep()
     today = f"Today ({now:%A}) we're open {hours.spec(now.date())}."
     if str(when or "asap").strip().lower() in ("asap", "now", "soon", ""):
         at = earliest
@@ -143,7 +169,7 @@ def _validate(ctx: Ctx, a: dict) -> tuple[dict | None, list[str]]:
         return None, ["Online orders are paused right now (the kitchen is busy). Offer to take a table booking, or try again later."]
     errors, lines = [], []
     for it in a.get("items") or []:
-        i = ctx.db.get(MenuItem, it.get("item_id", ""))
+        i = find_item(ctx.db, it.get("item_id", ""))
         if not i:
             errors.append(f"Unknown item {it.get('item_id')}")
             continue
@@ -166,20 +192,20 @@ def _validate(ctx: Ctx, a: dict) -> tuple[dict | None, list[str]]:
     if not str(a.get("customer_name", "")).strip():
         errors.append("customer_name is missing")
     way = a.get("fulfilment")
-    if way not in FULFILMENT:
-        errors.append(f"fulfilment must be one of {list(FULFILMENT)}")
-    elif FULFILMENT[way].get("needs_address") and not str(a.get("address", "")).strip():
+    if way not in fulfilment():
+        errors.append(f"fulfilment must be one of {list(fulfilment())}")
+    elif fulfilment()[way].get("needs_address") and not str(a.get("address", "")).strip():
         errors.append("address is needed for delivery")
-    pay = a.get("payment_method") or (next(iter(PAYMENTS)) if len(PAYMENTS) == 1 else None)
-    if pay not in PAYMENTS:
-        errors.append(f"payment_method must be one of {list(PAYMENTS)}")
+    pay = a.get("payment_method") or (next(iter(payments())) if len(payments()) == 1 else None)
+    if pay not in payments():
+        errors.append(f"payment_method must be one of {list(payments())}")
     at = _ready_at(a.get("pickup_time"), errors)
     if errors:
         return None, errors
     subtotal = sum(line["unit_price"] * line["quantity"] for line in lines)
-    fee = cents(FULFILMENT[way].get("fee", 0))
+    fee = cents(fulfilment()[way].get("fee", 0))
     return {"customer_name": a["customer_name"].strip(), "phone": phone, "fulfilment": way,
-            "address": str(a.get("address") or "").strip() if FULFILMENT[way].get("needs_address") else None,
+            "address": str(a.get("address") or "").strip() if fulfilment()[way].get("needs_address") else None,
             "ready_at": at.isoformat(), "payment_method": pay, "notes": str(a.get("notes") or "").strip()[:500] or None,
             "items": lines, "subtotal": subtotal, "fee": fee, "total": subtotal + fee}, []
 
@@ -187,9 +213,9 @@ def _validate(ctx: Ctx, a: dict) -> tuple[dict | None, list[str]]:
 def _summary(q: dict) -> dict:
     """The quote as the customer should see it: amounts formatted, the time spelled out."""
     return {"items": [f"{line_text(line)}: {money(line['unit_price'] * line['quantity'])}" for line in q["items"]],
-            "fulfilment": FULFILMENT[q["fulfilment"]]["label"], "address": q["address"], "ready_at": hours.label(datetime.fromisoformat(q["ready_at"])),
+            "fulfilment": fulfilment()[q["fulfilment"]]["label"], "address": q["address"], "ready_at": hours.label(datetime.fromisoformat(q["ready_at"])),
             "name": q["customer_name"], "phone": q["phone"], "notes": q["notes"], "subtotal": money(q["subtotal"]),
-            "fee": money(q["fee"]), "total": money(q["total"]), "payment": PAYMENTS[q["payment_method"]]["label"]}
+            "fee": money(q["fee"]), "total": money(q["total"]), "payment": payments()[q["payment_method"]]["label"]}
 
 
 def create_order(ctx: Ctx, confirmed: bool = False, **a) -> dict:
@@ -221,11 +247,11 @@ def create_order(ctx: Ctx, confirmed: bool = False, **a) -> dict:
     ctx.conv.pending_order = None
     ctx.db.commit()
     return {"status": "PLACED", "order_id": order.id, "total": money(order.total), "ready_at": hours.label(hours.to_local(order.ready_at)),
-            "payment_note": PAYMENTS[order.payment_method]["note"], "fulfilment_note": FULFILMENT[order.fulfilment].get("note")}
+            "payment_note": payments()[order.payment_method]["note"], "fulfilment_note": fulfilment()[order.fulfilment].get("note")}
 
 
 def order_dict(o: Order) -> dict:
-    return {"order_id": o.id, "status": o.status, "fulfilment": FULFILMENT.get(o.fulfilment, {}).get("label", o.fulfilment),
+    return {"order_id": o.id, "status": o.status, "fulfilment": fulfilment().get(o.fulfilment, {}).get("label", o.fulfilment),
             "ready_at": hours.label(hours.to_local(o.ready_at)), "total": money(o.total), "items": [line_text(line) for line in o.items]}
 
 
@@ -269,19 +295,19 @@ def saved_details(ctx: Ctx) -> dict:
 # --- bookings -----------------------------------------------------------------------------------
 
 def _bookable(at: datetime) -> bool:
-    last = timedelta(minutes=RES.get("last_booking_before_close", 60))
+    last = timedelta(minutes=res().get("last_booking_before_close", 60))
     return any(start <= at <= end - last for start, end in hours.periods(at.date()))
 
 
 def _seats_taken(db, at: datetime) -> int:
     # ponytail: counts every booking within a sitting of this one as overlapping it, which over-counts a little
     # (two that don't overlap each other both block this one); a per-table plan would be exact.
-    lo, hi = hours.to_utc(at - SITTING), hours.to_utc(at + SITTING)
+    lo, hi = hours.to_utc(at - sitting()), hours.to_utc(at + sitting())
     return sum(b.party_size for b in db.scalars(select(Booking).where(Booking.status == "booked", Booking.at > lo, Booking.at < hi)))
 
 
 def _fits(db, at: datetime, party: int) -> bool:
-    return _bookable(at) and at >= hours.local_now() and _seats_taken(db, at) + party <= RES["capacity"]
+    return _bookable(at) and at >= hours.local_now() and _seats_taken(db, at) + party <= res()["capacity"]
 
 
 def _alternatives(db, day: date, party: int, near: datetime) -> list[str]:
@@ -299,15 +325,15 @@ def _booking_time(date_s: str, time_s: str, party, errors: list, limit_party=Tru
     now = hours.local_now()
     if not isinstance(party, int) or party < 1:
         errors.append("party_size must be a whole number of people")
-    elif limit_party and party > RES["max_party"]:
-        errors.append(f"We book groups of up to {RES['max_party']} here; bigger groups are arranged by the team.")
+    elif limit_party and party > res()["max_party"]:
+        errors.append(f"We book groups of up to {res()['max_party']} here; bigger groups are arranged by the team.")
     if at < now:
         errors.append(f"That time has passed (it's now {hours.label(now)}).")
-    elif at.date() > now.date() + timedelta(days=RES["days_ahead"]):
-        errors.append(f"We take bookings up to {RES['days_ahead']} days ahead.")
+    elif at.date() > now.date() + timedelta(days=res()["days_ahead"]):
+        errors.append(f"We take bookings up to {res()['days_ahead']} days ahead.")
     elif not _bookable(at):
         errors.append(f"We can't book {hours.label(at)}. On {at:%A}s we're open {hours.spec(at.date())}, and the last booking is "
-                      f"{RES.get('last_booking_before_close', 60)} minutes before closing.")
+                      f"{res().get('last_booking_before_close', 60)} minutes before closing.")
     return None if errors else at
 
 
@@ -317,7 +343,7 @@ def check_availability(ctx: Ctx, date: str, time: str, party_size: int) -> dict:
     if errors:
         return {"available": False, "problems": errors, **({"instruction": "Get the name and phone, then call request_approval "
                                                                             "with kind large_booking and the booking details."}
-                                                           if isinstance(party_size, int) and party_size > RES["max_party"] else {})}
+                                                           if isinstance(party_size, int) and party_size > res()["max_party"] else {})}
     if _fits(ctx.db, at, party_size):
         return {"available": True, "when": hours.label(at), "party_size": party_size}
     return {"available": False, "when": hours.label(at), "problems": ["Fully booked at that time."],
@@ -401,14 +427,14 @@ def request_approval(ctx: Ctx, kind: str, summary: str, order_id: int | None = N
 # --- the café -----------------------------------------------------------------------------------
 
 def get_business_info(ctx: Ctx, topic: str) -> dict:
-    b, now = BUSINESS, hours.local_now()
+    b, now = cfg(), hours.local_now()
     info = {
         "hours": {"weekly": hours.weekly(), "open_now": hours.is_open(now), "now": hours.label(now)},
         "location": b["location"],
-        "ordering": {"ways": {k: {"label": v["label"], "fee": money(cents(v.get("fee", 0))), "note": v.get("note")} for k, v in FULFILMENT.items()},
-                     "ready_in_minutes": int(PREP.total_seconds() // 60), "orders_paused": orders_paused(ctx.db), "orders_for": "today only"},
-        "payment": PAYMENTS,
-        "bookings": {"max_party": RES["max_party"], "days_ahead": RES["days_ahead"], "sitting_minutes": RES["sitting_minutes"]},
+        "ordering": {"ways": {k: {"label": v["label"], "fee": money(cents(v.get("fee", 0))), "note": v.get("note")} for k, v in fulfilment().items()},
+                     "ready_in_minutes": int(prep().total_seconds() // 60), "orders_paused": orders_paused(ctx.db), "orders_for": "today only"},
+        "payment": payments(),
+        "bookings": {"max_party": res()["max_party"], "days_ahead": res()["days_ahead"], "sitting_minutes": res()["sitting_minutes"]},
         "allergens": b.get("allergen_note"),
         "about": b["about"],
     }
@@ -433,68 +459,70 @@ _line = {"type": "object", "properties": {
 _when = {"date": {"type": "string", "description": "YYYY-MM-DD"}, "time": {"type": "string", "description": "HH:MM, 24-hour"},
          "party_size": {"type": "integer"}}
 
-SPECS = [
-    {"name": "search_menu",
-     "description": "Search the menu by name or kind of food/drink, e.g. 'flat white', 'vegan breakfast', 'burger'. "
-                    "Returns price, options with their extra cost, dietary tags, allergens and whether it's available today.",
-     "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}},
-    {"name": "get_menu", "description": "The whole menu (or one category) with prices, for 'what do you have?' questions.",
-     "input_schema": {"type": "object", "properties": {"category": {"type": "string"}}}},
-    {"name": "get_item", "description": "Full details of one menu item.", "input_schema": _id},
-    {"name": "send_item_photo", "description": "Send the customer a photo of a menu item (only items with has_photo=true).", "input_schema": _id},
-    {"name": "saved_details", "description": "Name, phone and address from this customer's last order or booking in this chat, if any.",
-     "input_schema": {"type": "object", "properties": {}}},
-    {"name": "create_order",
-     "description": "Pickup or delivery orders, for today only. Two steps. confirmed=false with all details: checks everything and returns "
-                    "the official summary and total (nothing is placed). confirmed=true (no other fields): places the last quoted order; "
-                    "only call it after the customer said yes to that summary in a later message.",
-     "input_schema": {"type": "object", "properties": {
-         "confirmed": {"type": "boolean"},
-         "customer_name": {"type": "string"}, "phone": {"type": "string"},
-         "fulfilment": {"type": "string", "enum": list(FULFILMENT)},
-         "address": {"type": "string", "description": "Only for delivery"},
-         "pickup_time": {"type": "string", "description": '"asap" or a time today like "13:30"'},
-         "payment_method": {"type": "string", "enum": list(PAYMENTS)},
-         "notes": {"type": "string"},
-         "items": {"type": "array", "items": _line}}, "required": ["confirmed"]}},
-    {"name": "get_order_status", "description": "Orders placed in this chat: one by number, or the latest ones.",
-     "input_schema": {"type": "object", "properties": {"order_id": {"type": "integer"}}}},
-    {"name": "cancel_order",
-     "description": "Cancel an order from this chat that the kitchen hasn't started. Only after the customer clearly asked to cancel it.",
-     "input_schema": {"type": "object", "properties": {"order_id": {"type": "integer"}}, "required": ["order_id"]}},
-    {"name": "check_availability", "description": "Whether a table is free for a party at a date and time; suggests other times if not.",
-     "input_schema": {"type": "object", "properties": _when, "required": ["date", "time", "party_size"]}},
-    {"name": "book_table",
-     "description": "Book a table. Only after you've repeated the date, time, party size and name to the customer and they agreed.",
-     "input_schema": {"type": "object", "properties": {
-         "customer_name": {"type": "string"}, "phone": {"type": "string"}, **_when,
-         "notes": {"type": "string", "description": "e.g. high chair, birthday, outside table"}},
-         "required": ["customer_name", "phone", "date", "time", "party_size"]}},
-    {"name": "my_bookings", "description": "Bookings made in this chat.", "input_schema": {"type": "object", "properties": {}}},
-    {"name": "cancel_booking", "description": "Cancel a booking made in this chat. Only after the customer clearly asked to.",
-     "input_schema": {"type": "object", "properties": {"booking_id": {"type": "integer"}}, "required": ["booking_id"]}},
-    {"name": "request_approval",
-     "description": "Ask the team to decide something you can't: a refund or remake for an order (refund), a discount or freebie "
-                    "(discount), a booking for a group bigger than we book (large_booking, with the booking details), or another "
-                    "exception (special_request). The team answers in the dashboard and the customer is told here automatically.",
-     "input_schema": {"type": "object", "properties": {
-         "kind": {"type": "string", "enum": APPROVAL_KINDS},
-         "summary": {"type": "string", "description": "One line for the team, e.g. 'Refund for order #12: flat white was cold'"},
-         "order_id": {"type": "integer"},
-         "booking": {"type": "object", "description": "Only for large_booking", "properties": {
-             "customer_name": {"type": "string"}, "phone": {"type": "string"}, **_when, "notes": {"type": "string"}}}},
-         "required": ["kind", "summary"]}},
-    {"name": "get_business_info",
-     "description": "Café facts: opening hours (and whether we're open now), location and parking, ordering (pickup/delivery, fees, "
-                    "times, whether orders are paused), payment, booking rules, allergen policy, about.",
-     "input_schema": {"type": "object", "properties": {
-         "topic": {"type": "string", "enum": ["hours", "location", "ordering", "payment", "bookings", "allergens", "about"]}},
-         "required": ["topic"]}},
-    {"name": "escalate_to_human",
-     "description": "Hand the chat to a person. Use when the customer asks for a person, is upset or angry, has a serious "
-                    "allergy question, wants catering or an event, or anything you can't answer from the tools.",
-     "input_schema": {"type": "object", "properties": {"reason": {"type": "string"}}, "required": ["reason"]}},
-]
+def specs() -> list[dict]:
+    """What the LLM sees, built per café: the pickup/delivery and payment choices come from its settings."""
+    return [
+        {"name": "search_menu",
+         "description": "Search the menu by name or kind of food/drink, e.g. 'flat white', 'vegan breakfast', 'burger'. "
+                        "Returns price, options with their extra cost, dietary tags, allergens and whether it's available today.",
+         "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}},
+        {"name": "get_menu", "description": "The whole menu (or one category) with prices, for 'what do you have?' questions.",
+         "input_schema": {"type": "object", "properties": {"category": {"type": "string"}}}},
+        {"name": "get_item", "description": "Full details of one menu item.", "input_schema": _id},
+        {"name": "send_item_photo", "description": "Send the customer a photo of a menu item (only items with has_photo=true).", "input_schema": _id},
+        {"name": "saved_details", "description": "Name, phone and address from this customer's last order or booking in this chat, if any.",
+         "input_schema": {"type": "object", "properties": {}}},
+        {"name": "create_order",
+         "description": "Pickup or delivery orders, for today only. Two steps. confirmed=false with all details: checks everything and returns "
+                        "the official summary and total (nothing is placed). confirmed=true (no other fields): places the last quoted order; "
+                        "only call it after the customer said yes to that summary in a later message.",
+         "input_schema": {"type": "object", "properties": {
+             "confirmed": {"type": "boolean"},
+             "customer_name": {"type": "string"}, "phone": {"type": "string"},
+             "fulfilment": {"type": "string", "enum": list(fulfilment())},
+             "address": {"type": "string", "description": "Only for delivery"},
+             "pickup_time": {"type": "string", "description": '"asap" or a time today like "13:30"'},
+             "payment_method": {"type": "string", "enum": list(payments())},
+             "notes": {"type": "string"},
+             "items": {"type": "array", "items": _line}}, "required": ["confirmed"]}},
+        {"name": "get_order_status", "description": "Orders placed in this chat: one by number, or the latest ones.",
+         "input_schema": {"type": "object", "properties": {"order_id": {"type": "integer"}}}},
+        {"name": "cancel_order",
+         "description": "Cancel an order from this chat that the kitchen hasn't started. Only after the customer clearly asked to cancel it.",
+         "input_schema": {"type": "object", "properties": {"order_id": {"type": "integer"}}, "required": ["order_id"]}},
+        {"name": "check_availability", "description": "Whether a table is free for a party at a date and time; suggests other times if not.",
+         "input_schema": {"type": "object", "properties": _when, "required": ["date", "time", "party_size"]}},
+        {"name": "book_table",
+         "description": "Book a table. Only after you've repeated the date, time, party size and name to the customer and they agreed.",
+         "input_schema": {"type": "object", "properties": {
+             "customer_name": {"type": "string"}, "phone": {"type": "string"}, **_when,
+             "notes": {"type": "string", "description": "e.g. high chair, birthday, outside table"}},
+             "required": ["customer_name", "phone", "date", "time", "party_size"]}},
+        {"name": "my_bookings", "description": "Bookings made in this chat.", "input_schema": {"type": "object", "properties": {}}},
+        {"name": "cancel_booking", "description": "Cancel a booking made in this chat. Only after the customer clearly asked to.",
+         "input_schema": {"type": "object", "properties": {"booking_id": {"type": "integer"}}, "required": ["booking_id"]}},
+        {"name": "request_approval",
+         "description": "Ask the team to decide something you can't: a refund or remake for an order (refund), a discount or freebie "
+                        "(discount), a booking for a group bigger than we book (large_booking, with the booking details), or another "
+                        "exception (special_request). The team answers in the dashboard and the customer is told here automatically.",
+         "input_schema": {"type": "object", "properties": {
+             "kind": {"type": "string", "enum": APPROVAL_KINDS},
+             "summary": {"type": "string", "description": "One line for the team, e.g. 'Refund for order #12: flat white was cold'"},
+             "order_id": {"type": "integer"},
+             "booking": {"type": "object", "description": "Only for large_booking", "properties": {
+                 "customer_name": {"type": "string"}, "phone": {"type": "string"}, **_when, "notes": {"type": "string"}}}},
+             "required": ["kind", "summary"]}},
+        {"name": "get_business_info",
+         "description": "Café facts: opening hours (and whether we're open now), location and parking, ordering (pickup/delivery, fees, "
+                        "times, whether orders are paused), payment, booking rules, allergen policy, about.",
+         "input_schema": {"type": "object", "properties": {
+             "topic": {"type": "string", "enum": ["hours", "location", "ordering", "payment", "bookings", "allergens", "about"]}},
+             "required": ["topic"]}},
+        {"name": "escalate_to_human",
+         "description": "Hand the chat to a person. Use when the customer asks for a person, is upset or angry, has a serious "
+                        "allergy question, wants catering or an event, or anything you can't answer from the tools.",
+         "input_schema": {"type": "object", "properties": {"reason": {"type": "string"}}, "required": ["reason"]}},
+    ]
 
 
 def run_tool(ctx: Ctx, name: str, args: dict) -> dict:

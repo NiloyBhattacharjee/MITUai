@@ -4,14 +4,18 @@ import json
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 
-from . import config, whatsapp
+import logging
+
+from . import tenancy, whatsapp
 
 router = APIRouter()
 CHANNELS = {"page": "messenger", "instagram": "instagram"}  # webhook "object" -> our channel name
+ID_COLUMN = {"messenger": "page_id", "instagram": "instagram_id"}  # which Shop column the webhook entry id matches
+log = logging.getLogger(__name__)
 
 
 def _send(recipient: str, message: dict):
-    r = whatsapp.http.post(whatsapp._url("me/messages"), headers={"Authorization": f"Bearer {config.PAGE_ACCESS_TOKEN}"},
+    r = whatsapp.http.post(whatsapp._url("me/messages"), headers={"Authorization": f"Bearer {tenancy.shop().page_token}"},
                            json={"recipient": {"id": recipient}, "messaging_type": "RESPONSE", "message": message})
     r.raise_for_status()
 
@@ -46,10 +50,13 @@ async def receive(request: Request, background: BackgroundTasks):
     data = json.loads(body)
     channel = CHANNELS.get(data.get("object"))
     for entry in data.get("entry", []) if channel else []:
+        if not (shop := whatsapp.shop_for(ID_COLUMN[channel], entry.get("id"))):
+            log.warning("%s message for %s, which no café is connected to", channel, entry.get("id"))
+            continue
         for event in entry.get("messaging", []):
             msg = event.get("message")
             if not msg or msg.get("is_echo"):  # reads, deliveries and copies of our own replies
                 continue
-            if whatsapp.first_time_seen(msg["mid"], event, channel):
-                background.add_task(handle_meta_event, channel, event)
+            if whatsapp.first_time_seen(msg["mid"], event, channel, shop.id):
+                background.add_task(handle_meta_event, shop, channel, event)
     return {"ok": True}

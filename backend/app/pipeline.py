@@ -8,9 +8,10 @@ from pathlib import Path
 
 from sqlalchemy import func, select, update
 
-from . import agent, messenger, notify, voice, whatsapp
-from .config import BUSINESS, MEDIA_DIR, PUBLIC_URL, STT_MIN_CONFIDENCE, VOICE_MAX_SECONDS, VOICE_REPLY, money
-from .db import Conversation, Message, SeenWhatsAppMessage, Session, now
+from . import agent, messenger, notify, tenancy, voice, whatsapp
+from .config import MEDIA_DIR, PUBLIC_URL, STT_MIN_CONFIDENCE, VOICE_MAX_SECONDS, VOICE_REPLY, money
+from .tenancy import cfg
+from .db import Conversation, Message, SeenWhatsAppMessage, Session, Shop, now
 
 log = logging.getLogger(__name__)
 WHATSAPP_WINDOW = timedelta(hours=24)  # Meta's rule on WhatsApp, Messenger and Instagram: after it, only templates/tags
@@ -58,7 +59,7 @@ def send_update(db, conv, text: str) -> str | None:
 
 def remind_unconfirmed():
     """One nudge for an order summary the customer hasn't answered within quote_reminder_minutes. Never a second one."""
-    cutoff = now() - timedelta(minutes=BUSINESS.get("quote_reminder_minutes", 10))
+    cutoff = now() - timedelta(minutes=cfg().get("quote_reminder_minutes", 10))
     with Session() as db:
         recent = select(Conversation).where(Conversation.pending_order.is_not(None), Conversation.bot_enabled,
                                             Conversation.updated_at > now() - timedelta(days=1))
@@ -70,7 +71,7 @@ def remind_unconfirmed():
             conv.pending_order = {**p, "reminded": True}  # marked before sending: a failed send never turns into a second nudge
             db.commit()
             if last <= p["quoted_turn"]:  # they haven't written since seeing the summary
-                send_update(db, conv, BUSINESS["messages"]["quote_reminder"].format(total=money(p["total"])))
+                send_update(db, conv, cfg()["messages"]["quote_reminder"].format(total=money(p["total"])))
 
 
 def handle_text(conv_id: str, channel: str, phone: str, text: str):
@@ -103,7 +104,7 @@ def canned_reply(conv_id, channel, phone, key: str, user_text: str, is_voice=Fal
             notify.flag_for_human(db, conv, flag)
         if not conv.bot_enabled:
             return
-        text = BUSINESS["messages"][key]
+        text = cfg()["messages"][key]
         agent.add_message(db, conv, "assistant", text)
     deliver(channel, phone, text)
 
@@ -160,48 +161,53 @@ MIME_EXT = {"audio/ogg": "ogg", "audio/mpeg": "mp3", "audio/mp4": "m4a", "audio/
             "audio/x-m4a": "m4a", "video/mp4": "mp4"}  # Messenger voice clips often come as mp4
 
 
-def handle_whatsapp_message(msg: dict):
+def handle_whatsapp_message(shop, msg: dict):
+    """A WhatsApp message sent to this café's number."""
     phone = msg["from"]
-    try:
-        whatsapp.mark_read(msg["id"])
-        kind = msg.get("type")
-        if kind == "text":
-            handle_text(phone, "whatsapp", phone, msg["text"]["body"])
-        elif kind == "audio":
-            t = time.perf_counter()
-            data, mime = whatsapp.download_media(msg["audio"]["id"])
-            log.info("downloaded voice note in %.2fs", time.perf_counter() - t)
-            handle_voice(phone, "whatsapp", phone, data, MIME_EXT.get(mime.split(";")[0].strip(), "ogg"))
-        elif kind == "image":
-            data, mime = whatsapp.download_media(msg["image"]["id"])
-            handle_photo(phone, "whatsapp", phone, data, mime, msg["image"].get("caption", ""))
-        else:
-            canned_reply(phone, "whatsapp", phone, "unsupported_media", f"[{kind}]")
-    except Exception:
-        log.exception("failed to handle WhatsApp message %s", msg.get("id"))
+    conv_id = f"{shop.id}:{phone}"
+    with tenancy.scope(shop):
+        try:
+            whatsapp.mark_read(msg["id"])
+            kind = msg.get("type")
+            if kind == "text":
+                handle_text(conv_id, "whatsapp", phone, msg["text"]["body"])
+            elif kind == "audio":
+                t = time.perf_counter()
+                data, mime = whatsapp.download_media(msg["audio"]["id"])
+                log.info("downloaded voice note in %.2fs", time.perf_counter() - t)
+                handle_voice(conv_id, "whatsapp", phone, data, MIME_EXT.get(mime.split(";")[0].strip(), "ogg"))
+            elif kind == "image":
+                data, mime = whatsapp.download_media(msg["image"]["id"])
+                handle_photo(conv_id, "whatsapp", phone, data, mime, msg["image"].get("caption", ""))
+            else:
+                canned_reply(conv_id, "whatsapp", phone, "unsupported_media", f"[{kind}]")
+        except Exception:
+            log.exception("failed to handle WhatsApp message %s", msg.get("id"))
     _mark_done(msg["id"])
 
 
-def handle_meta_event(channel: str, event: dict):
-    """A Messenger or Instagram message. The sender id (PSID/IGSID) is the only identity; Mitu asks for a phone when ordering."""
+def handle_meta_event(shop, channel: str, event: dict):
+    """A Messenger or Instagram message to this café's Page. The sender id (PSID/IGSID) is the only identity;
+    Mitu asks for a phone number when ordering."""
     sender, msg = event["sender"]["id"], event["message"]
-    conv_id = f"{channel}-{sender}"
+    conv_id = f"{shop.id}:{channel}-{sender}"
     attachments = msg.get("attachments") or []
     audio = next((a for a in attachments if a.get("type") == "audio"), None)
     image = next((a for a in attachments if a.get("type") == "image"), None)
-    try:
-        if msg.get("text"):
-            handle_text(conv_id, channel, sender, msg["text"])
-        elif audio:
-            data, mime = messenger.download(audio["payload"]["url"])
-            handle_voice(conv_id, channel, sender, data, MIME_EXT.get(mime.split(";")[0].strip(), "mp4"))
-        elif image:
-            data, mime = messenger.download(image["payload"]["url"])
-            handle_photo(conv_id, channel, sender, data, mime)
-        else:
-            canned_reply(conv_id, channel, sender, "unsupported_media", f"[{attachments[0].get('type') if attachments else 'message'}]")
-    except Exception:
-        log.exception("failed to handle %s message %s", channel, msg.get("mid"))
+    with tenancy.scope(shop):
+        try:
+            if msg.get("text"):
+                handle_text(conv_id, channel, sender, msg["text"])
+            elif audio:
+                data, mime = messenger.download(audio["payload"]["url"])
+                handle_voice(conv_id, channel, sender, data, MIME_EXT.get(mime.split(";")[0].strip(), "mp4"))
+            elif image:
+                data, mime = messenger.download(image["payload"]["url"])
+                handle_photo(conv_id, channel, sender, data, mime)
+            else:
+                canned_reply(conv_id, channel, sender, "unsupported_media", f"[{attachments[0].get('type') if attachments else 'message'}]")
+        except Exception:
+            log.exception("failed to handle %s message %s", channel, msg.get("mid"))
     _mark_done(msg["mid"])
 
 
@@ -216,11 +222,14 @@ def resume_unfinished():
     """Re-run messages a crash or restart cut off. At-least-once: rarely, a customer gets a reply twice."""
     # ponytail: assumes one server process; with several workers, one would re-run messages another is still handling.
     with Session() as db:
-        pending = db.execute(select(SeenWhatsAppMessage.channel, SeenWhatsAppMessage.payload)
+        pending = db.execute(select(SeenWhatsAppMessage.channel, SeenWhatsAppMessage.payload, SeenWhatsAppMessage.shop_id)
                              .where(SeenWhatsAppMessage.done.is_(False))).all()
-    for channel, payload in pending:
-        log.info("resuming %s message after a restart", channel or "whatsapp")
-        if channel in (None, "whatsapp"):
-            handle_whatsapp_message(payload)
+        shops = {s.id: s for s in db.scalars(select(Shop))}
+    for channel, payload, shop_id in pending:
+        if shop_id not in shops:
+            continue
+        log.info("resuming %s message for %s after a restart", channel, shop_id)
+        if channel == "whatsapp":
+            handle_whatsapp_message(shops[shop_id], payload)
         else:
-            handle_meta_event(channel, payload)
+            handle_meta_event(shops[shop_id], channel, payload)
