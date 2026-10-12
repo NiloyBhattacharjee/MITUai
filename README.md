@@ -13,7 +13,7 @@ business.yaml          all shop details and products (swap this to change busine
 backend/
   app/config.py        .env + business.yaml
   app/db.py            SQLAlchemy models (SQLite by default)
-  app/tools.py         search_products, get_product, create_order, get_order_status, get_business_info, escalate_to_human
+  app/tools.py         search_products, get_product, send_product_photo, create_order, record_payment, get_order_status, cancel_order, get_business_info, escalate_to_human
   app/llm.py           LLM interface: Bedrock Converse or the Anthropic API (LLM_PROVIDER)
   app/agent.py         system prompt, history, tool loop, handoff
   app/pipeline.py      one entry point per message type (text / voice / other), used by both channels
@@ -123,7 +123,7 @@ Simplest options picked where the brief was open:
 
 - **Order confirmation is enforced in code, not just the prompt.** `create_order(confirmed=false)` validates and quotes, and stores the quote on the chat. `confirmed=true` only works if that quote was made in an *earlier* turn, so the customer must have sent a message after seeing the summary. Whether that message means "yes" is the LLM's call.
 - **History is text only**, except the customer's own photos (JPG/PNG), which are re-sent as images every turn (prompt caching makes the repeats cheap). Each turn's tool calls stay inside that turn, and the model re-looks things up next turn (the prompt tells it to). The last 30 messages are sent. Photos need a vision model, so with Ollama use one like `qwen2.5vl`.
-- **Stock is per product**, not per size or colour, to match the brief's single stock count. Cancelling an order does not return stock.
+- **Stock is per size and colour.** Cancelling an order returns its stock, whether the owner cancels it in the dashboard or the customer does in chat. Customers can only cancel their own orders from the same chat, before shipping, and not once they've paid (a refund needs a human).
 - **Language label** in the dashboard comes from a cheap heuristic (Bangla script, or common Banglish words). The LLM mirrors the customer's language on its own.
 - **Handoff** sets `needs_human` and switches the bot off for that chat. Turning the bot back on in the dashboard clears the flag. If the LLM call fails, the customer gets a polite fixed message and the chat is flagged.
 - **Fixed replies** (unsupported media, unclear or too-long voice note, errors) skip the LLM and come from `business.yaml`. They are bilingual because the language may not be known yet.

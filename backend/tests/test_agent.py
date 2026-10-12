@@ -252,3 +252,23 @@ def test_owner_emailed_when_an_order_takes_stock_low(db, monkeypatch):
     assert tools.reserve_stock(db, [line]) is None  # 4 -> 3: crosses the line
     assert tools.reserve_stock(db, [line]) is None  # 3 -> 2: already low, no second email
     assert len(sent) == 1 and "Blue Cotton Kurti (M, Blue): 3 left" in sent[0][1]
+
+
+def test_customer_cancels_own_unshipped_order(db):
+    from app.tools import cancel_order, reserve_stock
+    line = {"product_id": "P04", "name": "Blue Cotton Kurti", "size": "M", "colour": "Blue", "quantity": 2, "unit_price": 950}
+    reserve_stock(db, [line])
+    orders = [Order(conversation_id="sim-1", customer_name="Karim", phone="01712345678", address="Banani", delivery_area="inside_dhaka",
+                    payment_method=pm, items=[line], subtotal=1900, delivery_charge=70, total=1970, status=st, payment_ref=ref)
+              for pm, st, ref in [("cod", "new", None), ("cod", "shipped", None), ("bkash", "new", "TRX12345678")]]
+    db.add_all(orders)
+    db.commit()
+    mine, stranger = Ctx(db, db.merge(Conversation(id="sim-1", channel="sim", phone="1")), 1), Ctx(db, Conversation(id="sim-2", channel="sim", phone="2"), 1)
+
+    assert "error" in cancel_order(stranger, orders[0].id)  # someone else's chat
+    assert "error" in cancel_order(mine, orders[1].id)  # already shipped
+    assert cancel_order(mine, orders[2].id)["instruction"] == "Call escalate_to_human."  # paid: needs a refund
+    assert cancel_order(mine, orders[0].id)["status"] == "CANCELLED"
+    db.expire_all()
+    assert db.get(Order, orders[0].id).status == "cancelled"
+    assert db.get(Product, "P04").stock_of("M", "Blue") == 4  # back to where it started
