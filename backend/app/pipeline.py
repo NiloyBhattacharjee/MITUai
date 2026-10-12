@@ -3,14 +3,14 @@ import logging
 import mimetypes
 import time
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from sqlalchemy import func, select, update
 
 from . import agent, messenger, notify, voice, whatsapp
-from .config import BUSINESS, MEDIA_DIR, PUBLIC_URL, STT_MIN_CONFIDENCE, VOICE_MAX_SECONDS, VOICE_REPLY
-from .db import Message, SeenWhatsAppMessage, Session, now
+from .config import BUSINESS, MEDIA_DIR, PUBLIC_URL, STT_MIN_CONFIDENCE, VOICE_MAX_SECONDS, VOICE_REPLY, money
+from .db import Conversation, Message, SeenWhatsAppMessage, Session, now
 
 log = logging.getLogger(__name__)
 WHATSAPP_WINDOW = timedelta(hours=24)  # Meta's rule on WhatsApp, Messenger and Instagram: after it, only templates/tags
@@ -54,6 +54,23 @@ def send_update(db, conv, text: str) -> str | None:
         return "Customer not notified: sending the WhatsApp message failed."
     agent.add_message(db, conv, "assistant", text)
     return None
+
+
+def remind_unconfirmed():
+    """One nudge for an order summary the customer hasn't answered within quote_reminder_minutes. Never a second one."""
+    cutoff = now() - timedelta(minutes=BUSINESS.get("quote_reminder_minutes", 10))
+    with Session() as db:
+        recent = select(Conversation).where(Conversation.pending_order.is_not(None), Conversation.bot_enabled,
+                                            Conversation.updated_at > now() - timedelta(days=1))
+        for conv in db.scalars(recent).all():
+            p = conv.pending_order
+            if not p or p.get("reminded") or "quoted_at" not in p or datetime.fromisoformat(p["quoted_at"]) > cutoff:
+                continue
+            last = db.scalar(select(func.max(Message.id)).where(Message.conversation_id == conv.id, Message.role == "user"))
+            conv.pending_order = {**p, "reminded": True}  # marked before sending: a failed send never turns into a second nudge
+            db.commit()
+            if last <= p["quoted_turn"]:  # they haven't written since seeing the summary
+                send_update(db, conv, BUSINESS["messages"]["quote_reminder"].format(total=money(p["total"])))
 
 
 def handle_text(conv_id: str, channel: str, phone: str, text: str):

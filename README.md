@@ -7,7 +7,8 @@ Mitu answers a café's customers in chat. It answers menu questions (prices, opt
   - **Kitchen:** live orders in New / Preparing / Ready columns, with a sound when one arrives and a button to pause online orders.
   - **Orders:** every order, with a CSV export.
   - **Bookings:** the next two weeks of tables.
-  - **Conversations:** live chats with staff replies and an AI on/off switch per chat. Under each customer message, "AI used …" shows the tools the AI called, what they returned and what that turn cost.
+  - **Approvals:** refunds, discounts, big-group bookings and other exceptions the assistant won't decide alone. Staff approve or decline with an optional message, and the customer is told in their chat; an approved big group is booked automatically.
+  - **Conversations:** live chats with staff replies (with saved replies from `business.yaml`) and an AI on/off switch per chat. Under each customer message, "AI used …" shows the tools the AI called, what they returned and what that turn cost.
   - **Menu:** prices, options, dietary info, photos, and a sold-out switch.
 - **Chat simulator** (`#/simulator`, signed-in staff only, since every message runs the paid LLM): a WhatsApp-style phone in the browser, with a hold-to-record mic and a photo button.
 - **Real chats:** WhatsApp through the Cloud API webhook; Messenger and Instagram through the Messenger Platform webhook.
@@ -23,7 +24,7 @@ backend/
   app/options.py       menu options ("Milk: Full cream, Oat +0.80") and checking a customer's choices
   app/tools.py         the AI's tools: search_menu, get_menu, get_item, send_item_photo, saved_details, create_order,
                        get_order_status, cancel_order, check_availability, book_table, my_bookings, cancel_booking,
-                       get_business_info, escalate_to_human
+                       request_approval, get_business_info, escalate_to_human
   app/llm.py           LLM interface: Bedrock, the Anthropic API or Ollama (LLM_PROVIDER)
   app/agent.py         system prompt, history, tool loop, handoff
   app/pipeline.py      one entry point per message type (text / voice / photo / other), used by every channel
@@ -67,7 +68,7 @@ Run the tests (no credentials needed, the LLM and Graph API are mocked, and the 
 cd backend && .venv/bin/python -m pytest
 ```
 
-The tests use a fake LLM, so they can't tell you whether the real model behaves. The eval does: 35 scripted customer conversations in `backend/evals/cases.yaml` (menu questions, allergies, ordering, required options, closing time, cancelling, bookings, big groups, complaints, prompt injection, …) run against the real model from `.env`. Each runs on a throwaway database at 10:00 café time, checking which tools were called, what ended up in the database, and the replies. Run it after changing the prompt, the tools, the menu format or the model. It costs roughly $1–3 per full run on Sonnet (about double on Opus, free on Ollama):
+The tests use a fake LLM, so they can't tell you whether the real model behaves. The eval does: 35 scripted customer conversations in `backend/evals/cases.yaml` (menu questions, allergies, ordering, required options, closing time, cancelling, bookings, refunds and big groups going to the team, complaints, prompt injection, …) run against the real model from `.env`. Each runs on a throwaway database at 10:00 café time, checking which tools were called, what ended up in the database, and the replies. Run it after changing the prompt, the tools, the menu format or the model. It costs roughly $1–3 per full run on Sonnet (about double on Opus, free on Ollama):
 
 ```bash
 cd backend && .venv/bin/python eval.py              # all cases; exit code 1 if any fail
@@ -109,11 +110,12 @@ For anything beyond a demo, create a **System User** in Business Settings and ge
 Edit `business.yaml` (or point `BUSINESS_FILE` at another file):
 
 - **The basics:** name, the assistant's name, `timezone`, `currency`, location (add parking and transport, since people ask), about.
-- **`hours`:** per day, e.g. `"07:00-15:00"` or `"07:00-11:00, 17:00-21:00"`; leave a day out to close it. Orders and bookings are only accepted inside these. `prep_minutes` is the earliest an order can be ready.
+- **`hours`:** per day, e.g. `"07:00-15:00"` or `"07:00-11:00, 17:00-21:00"`; leave a day out to close it. Orders and bookings are only accepted inside these. `prep_minutes` is the earliest an order can be ready, and `quote_reminder_minutes` is when a customer who hasn't answered an order summary gets one nudge.
 - **`fulfilment`:** pickup and delivery, with fees and notes. `needs_address: true` makes the assistant ask for an address.
 - **`payment_methods`:** with only one, the assistant never asks.
 - **`reservations`:** seats (`capacity`), how long a sitting lasts, the biggest party it books itself (bigger ones go to a person), the last booking before closing, and how far ahead people can book.
-- **`allergen_note`, the fixed replies, and the messages customers get** when staff move an order on or cancel a booking.
+- **`allergen_note`, the fixed replies, and the messages customers get** when staff move an order on, cancel a booking or answer an approval request.
+- **`saved_replies`:** quick replies staff can insert in the chat box.
 - **`menu`:** each item has an `id`, `name`, `category`, `price`, `description`, `options`, `dietary`, `allergens`, `aliases` (other names customers use) and optionally `available: false`. Options are one line per group: `"Size*: Regular, Large +0.80"` (`*` = must pick one), `"Milk: Full cream, Oat +0.80"` (at most one), `"Extras (any): Extra shot +0.60"` (any number). The dashboard's Menu page uses the same format.
 
 Then run `python seed.py` to load the menu. After that, manage the menu on the Menu page; `seed.py` only adds items that aren't in the database yet.
@@ -156,6 +158,8 @@ Simplest options picked where the brief was open:
 - **Order confirmation is enforced in code, not just the prompt.** `create_order(confirmed=false)` checks everything and quotes, and stores the quote on the chat. `confirmed=true` only works if that quote was made in an *earlier* turn, so the customer must have sent a message after seeing the summary. Whether that message means "yes" is the LLM's call. Confirming checks everything again (sold out since? kitchen closed? orders paused?), and if the price changed it shows the new total and asks again.
 - **Orders are for today only**, for "as soon as possible" (now plus `prep_minutes`) or a time today inside opening hours. Pre-orders for another day would need a kitchen schedule; add them when a café asks.
 - **Bookings are one step** (the prompt makes the assistant repeat the details and wait for a yes): a wrong booking is cheap to cancel, unlike a wrong food order. Capacity is a seat count: every booking within one sitting of the new one counts against it. That over-counts slightly; a table plan would be exact.
+- **Approvals vs handoff:** a request with a clear yes/no (refund, discount, big group) goes to the Approvals queue and the assistant keeps chatting; an upset customer, a serious allergy question or catering goes to a person and the assistant steps back. Two staff can't both answer one request: the decision is a conditional update.
+- **One reminder** per unanswered order summary, checked every minute by the backend and sent only inside the messaging window. It's marked before sending, so a failed send never becomes a second nudge.
 - **Sold out is a switch, not stock counts.** Cafés run out of things during the day; nobody counts croissants into a system.
 - **Allergens:** the assistant only repeats the tags on each item plus the café's allergen note, never says a dish is safe, and hands serious allergy questions to a person.
 - **Time:** each customer message in the history starts with its local send time (`[Sat 12 Oct 2026 13:05]`), so "tomorrow" and "in 20 minutes" work. It's part of the stored message, so the cached prompt prefix doesn't change from turn to turn.

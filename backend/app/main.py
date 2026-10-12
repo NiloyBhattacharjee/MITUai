@@ -6,26 +6,36 @@ import re
 import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, time, timedelta
-from time import monotonic
-from typing import Annotated
+from time import monotonic, sleep
+from typing import Annotated, Literal
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Form, Header, HTTPException, Query, Request, Response, UploadFile
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from . import agent, hours, messenger, options, pipeline, tools, whatsapp
 from .config import ADMIN_PASSWORD, BUSINESS, CURRENCY, MEDIA_DIR, STAFF, cents
-from .db import (BOOKING_STATUSES, ORDER_STATUSES, Booking, Conversation, LlmUsage, MenuItem, Message, Order, Session, Setting,
-                 ToolCall, init_db)
+from .db import (BOOKING_STATUSES, ORDER_STATUSES, Approval, Booking, Conversation, LlmUsage, MenuItem, Message, Order, Session,
+                 Setting, ToolCall, init_db, now)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 init_db()
 
 
+def every_minute():
+    while True:
+        sleep(60)
+        try:
+            pipeline.remind_unconfirmed()
+        except Exception:
+            logging.exception("reminders failed")
+
+
 @asynccontextmanager
 async def lifespan(app):
     threading.Thread(target=pipeline.resume_unfinished, daemon=True).start()
+    threading.Thread(target=every_minute, daemon=True).start()
     yield
 
 app = FastAPI(title=f"{BUSINESS['name']} AI agent", lifespan=lifespan)
@@ -191,6 +201,11 @@ def human_reply(conv_id: str, body: Reply, who: str = dash):
     return {"ok": True}
 
 
+@app.get("/api/saved-replies", dependencies=[dash])
+def saved_replies():
+    return BUSINESS.get("saved_replies", [])
+
+
 class BotToggle(BaseModel):
     enabled: bool
 
@@ -321,6 +336,57 @@ def set_booking_status(booking_id: int, body: Status):
             text = BUSINESS["messages"]["booking_cancelled"].format(when=hours.label(hours.to_local(b.at)), party_size=b.party_size)
             note = pipeline.send_update(db, conv, text)
     return {"ok": True, "note": note}
+
+
+# --- approvals ----------------------------------------------------------------------------------
+
+def approval_row(db, a: Approval) -> dict:
+    conv, order, d = db.get(Conversation, a.conversation_id), a.order_id and db.get(Order, a.order_id), a.details or {}
+    return {"id": a.id, "kind": a.kind, "summary": a.summary, "status": a.status, "note": a.note, "decided_by": a.decided_by,
+            "created_at": iso(a.created_at), "decided_at": a.decided_at and iso(a.decided_at), "conversation_id": a.conversation_id,
+            "channel": conv and conv.channel, "customer": conv and conv.phone, "order": order and order_row(order),
+            "booking": d.get("at") and {**d, "when": hours.label(datetime.fromisoformat(d["at"]))}}
+
+
+@app.get("/api/approvals", dependencies=[dash])
+def approvals():
+    """Pending requests, oldest first, then the 30 most recently decided."""
+    with Session() as db:
+        pending = db.scalars(select(Approval).where(Approval.status == "pending").order_by(Approval.id)).all()
+        done = db.scalars(select(Approval).where(Approval.status != "pending").order_by(Approval.decided_at.desc()).limit(30)).all()
+        return [approval_row(db, a) for a in [*pending, *done]]
+
+
+class Decision(BaseModel):
+    decision: Literal["approved", "declined"]
+    note: str = Field("", max_length=1000)  # staff's message to the customer
+
+
+@app.post("/api/approvals/{approval_id}")
+def decide(approval_id: int, body: Decision, who: str = dash):
+    """The customer is told the answer in their chat. An approved big-group booking is booked."""
+    note = body.note.strip()
+    with Session() as db:
+        # Conditional update, so two staff deciding at once can't both act on it.
+        done = db.execute(update(Approval).where(Approval.id == approval_id, Approval.status == "pending")
+                          .values(status=body.decision, note=note or None, decided_by=who, decided_at=now())).rowcount
+        a = _get(db, Approval, approval_id)
+        if not done:
+            raise HTTPException(409, f"Already {a.status} by {a.decided_by}.")
+        msgs = BUSINESS["messages"]
+        if body.decision == "approved" and a.kind == "large_booking" and a.details:
+            d, at = a.details, datetime.fromisoformat(a.details["at"])
+            b = Booking(conversation_id=a.conversation_id, customer_name=d["customer_name"], phone=d["phone"], party_size=d["party_size"],
+                        at=hours.to_utc(at), notes=d.get("notes"))
+            db.add(b)
+            db.flush()
+            text = msgs["large_booking_approved"].format(party_size=b.party_size, when=hours.label(at), booking_id=b.id, note=note)
+        else:
+            text = msgs[f"approval_{body.decision}"].format(summary=a.summary, note=note)
+        db.commit()
+        conv = db.get(Conversation, a.conversation_id)
+        sent = pipeline.send_update(db, conv, text.strip()) if conv else None
+        return {**approval_row(db, a), "delivery_note": sent}
 
 
 # --- menu ----------------------------------------------------------------------------------------

@@ -10,7 +10,7 @@ from sqlalchemy import select
 
 from . import hours, notify, options
 from .config import BUSINESS, MEDIA_DIR, cents, money
-from .db import Booking, Conversation, MenuItem, Message, Order, Setting
+from .db import APPROVAL_KINDS, Approval, Booking, Conversation, MenuItem, Message, Order, Setting, now
 
 log = logging.getLogger(__name__)
 FULFILMENT = BUSINESS["fulfilment"]
@@ -197,7 +197,7 @@ def create_order(ctx: Ctx, confirmed: bool = False, **a) -> dict:
         quote, errors = _validate(ctx, a)
         if errors:
             return {"error": "Cannot quote yet", "problems": errors}
-        ctx.conv.pending_order = {"args": a, "total": quote["total"], "quoted_turn": ctx.turn_id}
+        ctx.conv.pending_order = {"args": a, "total": quote["total"], "quoted_turn": ctx.turn_id, "quoted_at": now().isoformat()}
         ctx.db.commit()
         return {"status": "QUOTE_ONLY_NOT_PLACED",
                 "instruction": "Show this summary with the total and ask the customer to confirm. Do not say the order is placed.",
@@ -212,7 +212,7 @@ def create_order(ctx: Ctx, confirmed: bool = False, **a) -> dict:
     if errors:
         return {"error": "Not placed: things changed since the quote.", "problems": errors}
     if quote["total"] != pending["total"]:
-        ctx.conv.pending_order = {**pending, "total": quote["total"], "quoted_turn": ctx.turn_id}
+        ctx.conv.pending_order = {**pending, "total": quote["total"], "quoted_turn": ctx.turn_id, "quoted_at": now().isoformat(), "reminded": False}
         ctx.db.commit()
         return {"status": "QUOTE_CHANGED_NOT_PLACED", "instruction": "Prices changed. Show the new summary and ask again.",
                 "summary": _summary(quote)}
@@ -290,7 +290,7 @@ def _alternatives(db, day: date, party: int, near: datetime) -> list[str]:
     return [f"{s:%H:%M}" for s in sorted(free[:3])]
 
 
-def _booking_time(date_s: str, time_s: str, party, errors: list) -> datetime | None:
+def _booking_time(date_s: str, time_s: str, party, errors: list, limit_party=True) -> datetime | None:
     try:
         at = datetime.combine(date.fromisoformat(str(date_s)), time.fromisoformat(str(time_s)))
     except ValueError:
@@ -299,7 +299,7 @@ def _booking_time(date_s: str, time_s: str, party, errors: list) -> datetime | N
     now = hours.local_now()
     if not isinstance(party, int) or party < 1:
         errors.append("party_size must be a whole number of people")
-    elif party > RES["max_party"]:
+    elif limit_party and party > RES["max_party"]:
         errors.append(f"We book groups of up to {RES['max_party']} here; bigger groups are arranged by the team.")
     if at < now:
         errors.append(f"That time has passed (it's now {hours.label(now)}).")
@@ -315,7 +315,8 @@ def check_availability(ctx: Ctx, date: str, time: str, party_size: int) -> dict:
     errors = []
     at = _booking_time(date, time, party_size, errors)
     if errors:
-        return {"available": False, "problems": errors, **({"instruction": "Call escalate_to_human for this group."}
+        return {"available": False, "problems": errors, **({"instruction": "Get the name and phone, then call request_approval "
+                                                                            "with kind large_booking and the booking details."}
                                                            if isinstance(party_size, int) and party_size > RES["max_party"] else {})}
     if _fits(ctx.db, at, party_size):
         return {"available": True, "when": hours.label(at), "party_size": party_size}
@@ -365,6 +366,38 @@ def cancel_booking(ctx: Ctx, booking_id: int) -> dict:
     return {"status": "CANCELLED", "booking_id": b.id}
 
 
+def request_approval(ctx: Ctx, kind: str, summary: str, order_id: int | None = None, booking: dict | None = None) -> dict:
+    if kind not in APPROVAL_KINDS:
+        return {"error": f"kind must be one of {APPROVAL_KINDS}"}
+    if not str(summary or "").strip():
+        return {"error": "summary is missing: say in one line what the customer is asking for"}
+    if order_id and not _own(ctx, Order, order_id):
+        return {"error": f"No order #{order_id} was placed in this chat."}
+    details = None
+    if kind == "large_booking":
+        b, errors = booking or {}, []
+        at = _booking_time(b.get("date"), b.get("time"), b.get("party_size"), errors, limit_party=False)
+        if not (phone := normalize_phone(b.get("phone", ""))):
+            errors.append("booking.phone must be a valid phone number")
+        if not str(b.get("customer_name", "")).strip():
+            errors.append("booking.customer_name is missing")
+        if errors:
+            return {"error": "Not sent to the team yet", "problems": errors}
+        details = {"customer_name": b["customer_name"].strip(), "phone": phone, "party_size": b["party_size"], "at": at.isoformat(),
+                   "notes": str(b.get("notes") or "").strip()[:500] or None}
+    waiting = ctx.db.scalar(select(Approval).where(Approval.conversation_id == ctx.conv.id, Approval.kind == kind, Approval.status == "pending"))
+    if waiting:
+        return {"status": "ALREADY_WAITING", "approval_id": waiting.id, "instruction": "The team already has this request; they'll reply here."}
+    a = Approval(conversation_id=ctx.conv.id, kind=kind, summary=str(summary).strip()[:500], order_id=int(order_id) if order_id else None,
+                 details=details)
+    ctx.db.add(a)
+    ctx.db.commit()
+    notify.email_owner(f"Approval needed: {kind.replace('_', ' ')}",
+                       f"{a.summary}\n\nApprove or decline it on the dashboard's Approvals page. The customer is told your answer.")
+    return {"status": "WAITING_FOR_STAFF", "approval_id": a.id,
+            "instruction": "Tell the customer the team will check and reply here soon. Don't promise the outcome."}
+
+
 # --- the café -----------------------------------------------------------------------------------
 
 def get_business_info(ctx: Ctx, topic: str) -> dict:
@@ -388,8 +421,8 @@ def escalate_to_human(ctx: Ctx, reason: str) -> dict:
 
 
 FUNCTIONS = {f.__name__: f for f in [search_menu, get_menu, get_item, send_item_photo, saved_details, create_order, get_order_status,
-                                     cancel_order, check_availability, book_table, my_bookings, cancel_booking, get_business_info,
-                                     escalate_to_human]}
+                                     cancel_order, check_availability, book_table, my_bookings, cancel_booking, request_approval,
+                                     get_business_info, escalate_to_human]}
 
 _id = {"type": "object", "properties": {"item_id": {"type": "string"}}, "required": ["item_id"]}
 _line = {"type": "object", "properties": {
@@ -440,6 +473,17 @@ SPECS = [
     {"name": "my_bookings", "description": "Bookings made in this chat.", "input_schema": {"type": "object", "properties": {}}},
     {"name": "cancel_booking", "description": "Cancel a booking made in this chat. Only after the customer clearly asked to.",
      "input_schema": {"type": "object", "properties": {"booking_id": {"type": "integer"}}, "required": ["booking_id"]}},
+    {"name": "request_approval",
+     "description": "Ask the team to decide something you can't: a refund or remake for an order (refund), a discount or freebie "
+                    "(discount), a booking for a group bigger than we book (large_booking, with the booking details), or another "
+                    "exception (special_request). The team answers in the dashboard and the customer is told here automatically.",
+     "input_schema": {"type": "object", "properties": {
+         "kind": {"type": "string", "enum": APPROVAL_KINDS},
+         "summary": {"type": "string", "description": "One line for the team, e.g. 'Refund for order #12: flat white was cold'"},
+         "order_id": {"type": "integer"},
+         "booking": {"type": "object", "description": "Only for large_booking", "properties": {
+             "customer_name": {"type": "string"}, "phone": {"type": "string"}, **_when, "notes": {"type": "string"}}}},
+         "required": ["kind", "summary"]}},
     {"name": "get_business_info",
      "description": "Café facts: opening hours (and whether we're open now), location and parking, ordering (pickup/delivery, fees, "
                     "times, whether orders are paused), payment, booking rules, allergen policy, about.",
@@ -447,8 +491,8 @@ SPECS = [
          "topic": {"type": "string", "enum": ["hours", "location", "ordering", "payment", "bookings", "allergens", "about"]}},
          "required": ["topic"]}},
     {"name": "escalate_to_human",
-     "description": "Hand the chat to a person. Use when the customer asks for a person, is upset, has a complaint, a serious "
-                    "allergy question, a big group or event, or anything you can't answer from the tools.",
+     "description": "Hand the chat to a person. Use when the customer asks for a person, is upset or angry, has a serious "
+                    "allergy question, wants catering or an event, or anything you can't answer from the tools.",
      "input_schema": {"type": "object", "properties": {"reason": {"type": "string"}}, "required": ["reason"]}},
 ]
 

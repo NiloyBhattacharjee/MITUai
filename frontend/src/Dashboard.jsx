@@ -53,6 +53,7 @@ export function Chats() {
   const base = sel && `/api/conversations/${encodeURIComponent(sel)}`
   const [msgs, refreshMsgs, setMsgs] = useLive(base && `${base}/messages`, 2000)
   const [reply, setReply] = useState('')
+  const [saved] = useLive('/api/saved-replies', 600000)
   const box = useRef(null)
   const shownFor = useRef(null)
   const conv = convs?.find((c) => c.id === sel)
@@ -174,6 +175,13 @@ export function Chats() {
               </p>
             ) : (
               <form onSubmit={send} className="flex items-center gap-2 p-3 border-t border-line bg-surface">
+                {saved?.length > 0 && (
+                  <select value="" onChange={(e) => setReply(e.target.value)} aria-label="Insert a saved reply" title="Saved replies"
+                    className="field w-auto! max-w-28 h-11! rounded-full! px-3! text-sm text-muted cursor-pointer">
+                    <option value="" disabled>Saved…</option>
+                    {saved.map((r) => <option key={r} value={r}>{r.length > 70 ? `${r.slice(0, 67)}…` : r}</option>)}
+                  </select>
+                )}
                 <input value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Reply as the café…" aria-label="Reply"
                   className="field rounded-full! h-11! px-5!" />
                 <button disabled={!reply.trim()} className="btn btn-primary rounded-full! w-11! h-11! px-0!" aria-label="Send"><Icon name="send" /></button>
@@ -418,6 +426,84 @@ export function Bookings() {
           )
         })}
       </div>
+    </>
+  )
+}
+
+// --- approvals -----------------------------------------------------------------------------------
+
+const KIND_LABEL = { refund: 'Refund', discount: 'Discount', large_booking: 'Big group', special_request: 'Special request' }
+
+function ApprovalCard({ a, onDone }) {
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const decide = async (decision) => {
+    setBusy(true)
+    try {
+      onDone(await api(`/api/approvals/${a.id}`, { method: 'POST', body: JSON.stringify({ decision, note }) }))
+    } catch (err) {
+      toast(detail(err, 'Could not save your answer. Try again.'))
+      setBusy(false)
+    }
+  }
+  return (
+    <article className="enter card p-5">
+      <header className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="chip bg-warn/10 text-warn">{KIND_LABEL[a.kind] || a.kind}</span>
+        <span className="text-xs text-faint">{customerName({ channel: a.channel, phone: a.customer || '' })} · {day(a.created_at)}, {clock(a.created_at)}</span>
+      </header>
+      <p className="mt-3 text-[15px] leading-relaxed">{a.summary}</p>
+      {a.booking && (
+        <p className="mt-2 text-sm text-muted">
+          {a.booking.party_size} people · {a.booking.when} · {a.booking.customer_name} · {a.booking.phone}
+          {a.booking.notes && <span className="text-warn"> · {a.booking.notes}</span>}
+        </p>
+      )}
+      {a.order && <p className="mt-2 text-sm text-muted">Order #{a.order.id} · {money(a.order.total)} · {a.order.items.join(', ')}</p>}
+      <label className="block mt-4">
+        <span className="text-sm font-medium">Message to the customer</span>
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Optional. Added to the answer they get."
+          className="field mt-1.5 h-auto! py-2.5 leading-relaxed" />
+      </label>
+      <div className="mt-4 flex justify-end gap-2">
+        <button disabled={busy} onClick={() => decide('declined')} className="btn btn-secondary">Decline</button>
+        <button disabled={busy} onClick={() => decide('approved')} className="btn btn-primary">{a.kind === 'large_booking' ? 'Approve and book' : 'Approve'}</button>
+      </div>
+    </article>
+  )
+}
+
+export function Approvals() {
+  const [rows, refresh, setRows] = useLive('/api/approvals', 5000)
+  const pending = rows?.filter((a) => a.status === 'pending') || []
+  const done = rows?.filter((a) => a.status !== 'pending') || []
+  const answered = (r) => {
+    setRows(rows.map((x) => x.id === r.id ? r : x))
+    toast(r.delivery_note || `${r.status === 'approved' ? 'Approved' : 'Declined'}. The customer has been told.`)
+    refresh()
+  }
+  return (
+    <>
+      <PageHeader title="Approvals" sub="Requests the assistant can't decide alone. Your answer goes straight to the customer's chat." />
+      {!rows && <Skeleton className="h-48 rounded-2xl!" />}
+      {rows && pending.length === 0 && (
+        <div className="card"><Empty icon="approvals" title="Nothing to decide">Refunds, discounts and big-group bookings land here.</Empty></div>
+      )}
+      <div className="space-y-4">{pending.map((a) => <ApprovalCard key={a.id} a={a} onDone={answered} />)}</div>
+      {done.length > 0 && (
+        <>
+          <h2 className="mt-10 mb-3 text-sm font-medium">Recently decided</h2>
+          <ul className="card divide-y divide-line">
+            {done.map((a) => (
+              <li key={a.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 text-sm">
+                <span className={cx('chip', STATUS_STYLE[a.status])}>{statusLabel(a.status)}</span>
+                <span className="flex-1 min-w-48">{a.summary}{a.note && <span className="text-muted"> · “{a.note}”</span>}</span>
+                <span className="text-xs text-faint">{a.decided_by} · {day(a.decided_at)}, {clock(a.decided_at)}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </>
   )
 }

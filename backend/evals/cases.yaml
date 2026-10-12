@@ -13,6 +13,8 @@
 #        bookings        number of bookings in the database after this turn
 # then:  needs_human     whether the chat ended up flagged for a person
 #        called          tools that must have been called in some turn
+#        called_any      at least one of these tools was called
+#        approvals       the kinds of approval requests sent to the team, e.g. [refund]
 #        order, booking  fields order #1 / booking #1 must have at the end (booking "time" is local HH:MM)
 #
 # Prices: flat white / latte / cappuccino 5.00 (+0.80 large, +0.80 oat), long black 4.50, fried chicken burger 24.00.
@@ -193,13 +195,22 @@
   then:
     order: {status: preparing}
 
-- name: hands a complaint to a person
+- name: hands an angry complaint to the team
   setup_order: {status: completed}
   turns:
     - say: My order 1 was cold and they forgot half of it! This is not okay.
-      calls: [escalate_to_human]
   then:
-    needs_human: true
+    called_any: [escalate_to_human, request_approval]
+
+- name: asks the team about a refund instead of promising one
+  setup_order: {status: completed}
+  turns:
+    - say: My flat white from order 1 was cold. Can I get my money back?
+      calls: [request_approval]
+      no_reply: "(refund|money).{0,30}(has been|is|was) (approved|processed|issued|sent)|I('ve| have) refunded"
+  then:
+    approvals: [refund]
+    needs_human: false
 
 # --- bookings ---------------------------------------------------------------------------------
 
@@ -223,13 +234,15 @@
       reply: "close|closed|open until|last booking|can't|cannot|earlier|unfortunately"
       bookings: 0
 
-- name: hands a big group to a person
+- name: sends a big group booking to the team for approval
   turns:
     - say: Can we book for 15 people tomorrow at 12:00?
-      calls: [escalate_to_human]
+      bookings: 0
+    - say: Mia Rossi, 0455 111 222
       bookings: 0
   then:
-    needs_human: true
+    called: [request_approval]
+    approvals: [large_booking]
 
 - name: cancels the customer's own booking
   setup_booking: {}

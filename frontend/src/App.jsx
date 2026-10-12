@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import Simulator from './Simulator.jsx'
-import { Bookings, Chats, Kitchen, Menu, Orders } from './Dashboard.jsx'
+import { Approvals, Bookings, Chats, Kitchen, Menu, Orders } from './Dashboard.jsx'
 import Analytics from './Analytics.jsx'
 import { Icon, cx, setCurrency } from './ui.jsx'
 
@@ -88,6 +88,7 @@ const PAGES = [
   { id: 'kitchen', label: 'Kitchen', el: <Kitchen /> },
   { id: 'orders', label: 'Orders', el: <Orders /> },
   { id: 'bookings', label: 'Bookings', el: <Bookings /> },
+  { id: 'approvals', label: 'Approvals', short: 'Approve', el: <Approvals /> },
   { id: 'chats', label: 'Conversations', short: 'Chats', el: <Chats /> },
   { id: 'menu', label: 'Menu', el: <Menu /> },
 ]
@@ -147,11 +148,14 @@ function Brand({ light }) {
 function Shell({ page, shop }) {
   const [convs] = useLive('/api/conversations', 5000)
   const [me] = useLive('/api/me', 60000)
+  const [asks] = useLive('/api/approvals', 5000)
   const waiting = convs?.filter((c) => c.needs_human).length
+  const counts = { chats: waiting, approvals: asks?.filter((a) => a.status === 'pending').length }
   const current = PAGES.find((p) => p.id === page) || PAGES[0]
   const logout = () => dispatchEvent(new Event('logout'))
-  const badge = (p) => p.id === 'chats' && waiting > 0 && (
-    <span className="rounded-full bg-warn px-1.5 min-w-5 text-center text-[11px] font-semibold leading-5 text-surface" title={`${waiting} waiting for a person`}>{waiting}</span>
+  const badge = (p) => counts[p.id] > 0 && (
+    <span className="rounded-full bg-warn px-1.5 min-w-5 text-center text-[11px] font-semibold leading-5 text-surface"
+      title={p.id === 'chats' ? `${waiting} waiting for a person` : `${counts[p.id]} to decide`}>{counts[p.id]}</span>
   )
   return (
     <div className="min-h-dvh md:grid md:grid-cols-[240px_1fr]">
@@ -198,7 +202,7 @@ function Shell({ page, shop }) {
         <div key={current.id} className="enter max-w-6xl mx-auto">{current.el}</div>
       </main>
 
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-20 grid grid-cols-6 border-t border-line bg-surface/90 backdrop-blur-lg pb-[env(safe-area-inset-bottom)]">
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-20 grid grid-cols-7 border-t border-line bg-surface/90 backdrop-blur-lg pb-[env(safe-area-inset-bottom)]">
         {PAGES.map((p) => {
           const active = current.id === p.id
           return (
@@ -206,7 +210,7 @@ function Shell({ page, shop }) {
               className={cx('relative flex flex-col items-center gap-1 pt-2.5 pb-2 text-[11px]', active ? 'text-ink font-medium' : 'text-faint')}>
               <span className={active ? 'text-brand' : ''}><Icon name={p.id} className="w-5 h-5" /></span>
               {p.short || p.label}
-              {p.id === 'chats' && waiting > 0 && <span className="absolute top-1.5 left-1/2 ml-2 w-2 h-2 rounded-full bg-warn" />}
+              {counts[p.id] > 0 && <span className="absolute top-1.5 left-1/2 ml-2 w-2 h-2 rounded-full bg-warn" />}
             </a>
           )
         })}

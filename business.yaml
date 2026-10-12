@@ -17,6 +17,7 @@ hours:
   sat: "08:00-21:00"
   sun: "08:00-15:00"
 prep_minutes: 15  # the earliest an order can be ready after it's placed
+quote_reminder_minutes: 10  # one nudge if a customer doesn't answer an order summary
 
 # Orders are for today only. needs_address: the customer must give a delivery address.
 fulfilment:
@@ -47,6 +48,19 @@ messages:
   order_ready_delivery: "Your order #{order_id} is on its way."
   order_cancelled: "Your order #{order_id} has been cancelled. Message us here if you have any questions."
   booking_cancelled: "Your booking for {party_size} on {when} has been cancelled. Message us here if you have any questions."
+  quote_reminder: "Just checking: would you like me to place your order ({total})? Reply yes to confirm, or tell me what to change."
+  # When staff answer a request in the dashboard's Approvals page ({summary} and {note}, the staff's message, are filled in).
+  approval_approved: "Good news: the team approved your request ({summary}). {note}"
+  approval_declined: "Sorry, the team couldn't approve your request ({summary}). {note}"
+  large_booking_approved: "Good news: your table for {party_size} on {when} is booked (booking #{booking_id}). {note}"
+
+# Quick replies staff can insert in the dashboard's chat box.
+saved_replies:
+  - "Thanks for your patience! We're looking into it now."
+  - "Sorry about that! We'll make it right. Could you tell us a bit more about what happened?"
+  - "Your order is on its way and should be with you shortly."
+  - "We've got your booking noted. See you soon!"
+  - "Thanks for letting us know. We've passed this on to the kitchen."
 
 # The menu. price in your currency. options, one line per group:
 #   "Name*: A, B +0.80"     pick exactly one (the * makes it required); +0.80 is the extra cost

@@ -25,14 +25,14 @@ from sqlalchemy import func, select  # noqa: E402
 
 from app import agent, hours, tools  # noqa: E402
 from app.config import BUSINESS, LLM_PROVIDER, MEDIA_DIR  # noqa: E402
-from app.db import Base, Booking, Conversation, LlmUsage, Order, Session, engine, new_item, now  # noqa: E402
+from app.db import Approval, Base, Booking, Conversation, LlmUsage, Order, Session, engine, new_item, now  # noqa: E402
 
 CASES = Path(__file__).parent / "evals" / "cases.yaml"
 PHONE = "0412345678"
 CONV = f"sim-{PHONE}"
 TURN_KEYS = {"say", "calls", "no_calls", "reply", "no_reply", "orders", "bookings"}
 CASE_KEYS = {"name", "turns", "setup_order", "setup_booking", "then"}
-THEN_KEYS = {"needs_human", "called", "order", "booking"}
+THEN_KEYS = {"needs_human", "called", "called_any", "order", "booking", "approvals"}
 
 
 def café_at_ten():
@@ -108,7 +108,10 @@ def run_case(case: dict) -> tuple[list[str], list[str], float]:
         tools.run_tool = real_run_tool
 
     then = case.get("then", {})
-    problems += [f"never called {n}" for n in then.get("called", []) if n not in {name for name, _, _ in calls}]
+    used = {name for name, _, _ in calls}
+    problems += [f"never called {n}" for n in then.get("called", []) if n not in used]
+    if "called_any" in then and not used & set(then["called_any"]):
+        problems.append(f"called none of {then['called_any']}")
     with Session() as db:
         if "needs_human" in then and bool((conv := db.get(Conversation, CONV)) and conv.needs_human) != then["needs_human"]:
             problems.append(f"needs_human should be {then['needs_human']}")
@@ -118,6 +121,9 @@ def run_case(case: dict) -> tuple[list[str], list[str], float]:
                 got = row and (f"{hours.to_local(row.at):%H:%M}" if field == "time" else getattr(row, field, None))
                 if got != want:
                     problems.append(f"{key} #1 {field} is {got!r}, expected {want!r}")
+        kinds = sorted(a.kind for a in db.scalars(select(Approval)))
+        if "approvals" in then and kinds != sorted(then["approvals"]):
+            problems.append(f"approval requests {kinds}, expected {sorted(then['approvals'])}")
         cost = db.scalar(select(func.sum(LlmUsage.cost_usd))) or 0.0
     return problems, transcript, cost
 
