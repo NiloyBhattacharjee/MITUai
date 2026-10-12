@@ -272,3 +272,13 @@ def test_customer_cancels_own_unshipped_order(db):
     db.expire_all()
     assert db.get(Order, orders[0].id).status == "cancelled"
     assert db.get(Product, "P04").stock_of("M", "Blue") == 4  # back to where it started
+
+
+def test_saved_details_only_from_the_same_chat(db):
+    from app.tools import saved_details
+    db.add(Order(conversation_id="8801712345678", customer_name="Karim", phone="01712345678", address="House 1, Banani",
+                 delivery_area="inside_dhaka", payment_method="cod", items=[], subtotal=0, delivery_charge=70, total=70))
+    db.commit()
+    back = saved_details(Ctx(db, Conversation(id="8801712345678", channel="whatsapp", phone="8801712345678"), 1))
+    assert back["address"] == "House 1, Banani" and back["phone"] == "01712345678"
+    assert "address" not in saved_details(Ctx(db, Conversation(id="8801999999999", channel="whatsapp", phone="8801999999999"), 1))

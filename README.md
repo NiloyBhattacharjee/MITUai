@@ -13,7 +13,7 @@ business.yaml          all shop details and products (swap this to change busine
 backend/
   app/config.py        .env + business.yaml
   app/db.py            SQLAlchemy models (SQLite by default)
-  app/tools.py         search_products, get_product, send_product_photo, create_order, record_payment, get_order_status, cancel_order, get_business_info, escalate_to_human
+  app/tools.py         search_products, get_product, send_product_photo, saved_details, create_order, record_payment, get_order_status, cancel_order, get_business_info, escalate_to_human
   app/llm.py           LLM interface: Bedrock Converse or the Anthropic API (LLM_PROVIDER)
   app/agent.py         system prompt, history, tool loop, handoff
   app/pipeline.py      one entry point per message type (text / voice / other), used by both channels

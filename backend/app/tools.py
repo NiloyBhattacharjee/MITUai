@@ -210,6 +210,15 @@ def get_order_status(ctx: Ctx, order_id: int | None = None, phone: str | None = 
     return {"orders": [order_dict(o) for o in orders]} if orders else {"error": f"No orders for {p}"}
 
 
+def saved_details(ctx: Ctx) -> dict:
+    # Only this chat's own orders: looking up by a typed phone number would hand out strangers' addresses.
+    o = ctx.db.scalar(select(Order).where(Order.conversation_id == ctx.conv.id).order_by(Order.id.desc()).limit(1))
+    if not o:
+        return {"note": "No earlier order in this chat. Ask for the details."}
+    return {"customer_name": o.customer_name, "phone": o.phone, "address": o.address, "delivery_area": o.delivery_area,
+            "payment_method": o.payment_method, "instruction": "Ask whether to use these again instead of asking for each one."}
+
+
 def cancel_order(ctx: Ctx, order_id: int) -> dict:
     o = ctx.db.get(Order, int(order_id))
     if not o or o.conversation_id != ctx.conv.id:
@@ -264,7 +273,7 @@ def send_product_photo(ctx: Ctx, product_id: str) -> dict:
     return {"status": "SENT", "instruction": "The photo is already in the chat. Don't describe it at length or send a link."}
 
 
-FUNCTIONS = {f.__name__: f for f in [search_products, get_product, send_product_photo, create_order, record_payment,
+FUNCTIONS = {f.__name__: f for f in [search_products, get_product, send_product_photo, saved_details, create_order, record_payment,
                                      get_order_status, cancel_order, get_business_info, escalate_to_human]}
 
 _item = {"type": "object", "properties": {
@@ -281,6 +290,9 @@ SPECS = [
     {"name": "send_product_photo",
      "description": "Send the customer a photo of a product (only products with has_photo=true). Use when they ask to see it or for a picture.",
      "input_schema": {"type": "object", "properties": {"product_id": {"type": "string"}}, "required": ["product_id"]}},
+    {"name": "saved_details",
+     "description": "Name, phone, address, delivery area and payment method from this customer's last order in this chat, if any.",
+     "input_schema": {"type": "object", "properties": {}}},
     {"name": "create_order",
      "description": "Two steps. confirmed=false with all details: validates stock and returns the official summary and total "
                     "(nothing is placed). confirmed=true (no other fields): places the last quoted order; only call it after "
