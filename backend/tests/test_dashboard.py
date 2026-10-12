@@ -53,3 +53,16 @@ def test_simulator_needs_login_and_guessing_locks_out(fake_llm):
         assert client.get("/api/me", headers={"X-Admin-Password": "guess"}).status_code == 401
     assert client.get("/api/me", headers={"X-Admin-Password": "pw"}).status_code == 429  # even the right one, from this IP
     main._wrong.clear()
+
+
+def test_staff_can_see_which_tools_the_ai_used(db, fake_llm):
+    from app.agent import respond
+    fake_llm.turns = [lambda h, call: call("search_products", {"query": "kurti"}) and "We have kurtis"]
+    asked = respond("sim-9", "sim", "9", "kurti ache?")
+    h = {"X-Admin-Password": "pw"}
+    customer = next(m for m in client.get("/api/conversations/sim-9/messages", headers=h).json() if m["role"] == "user")
+    assert customer["ai"]["tools"] == ["search_products"]
+    steps = client.get(f"/api/messages/{customer['id']}/steps", headers=h).json()
+    assert steps[0]["args"] == {"query": "kurti"} and steps[0]["result"]["results"][0]["id"] == "P04"
+    assert asked.text == "We have kurtis"
+    assert client.get(f"/api/messages/{customer['id']}/steps").status_code == 401

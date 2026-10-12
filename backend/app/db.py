@@ -121,11 +121,23 @@ class Order(Base):
     created_at: Mapped[datetime] = mapped_column(default=now)
 
 
+class ToolCall(Base):
+    """One tool the AI used while answering a customer message, so staff can see why it replied the way it did."""
+    __tablename__ = "tool_calls"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    message_id: Mapped[int] = mapped_column(ForeignKey("messages.id"), index=True)  # the customer message being answered
+    name: Mapped[str] = mapped_column(String(50))
+    args: Mapped[dict] = mapped_column(JSON)
+    result: Mapped[dict] = mapped_column(JSON)
+    ms: Mapped[int] = mapped_column(Integer)
+
+
 class LlmUsage(Base):
     """One row per AI API call, for the real cost on the Overview page."""
     __tablename__ = "llm_usage"
     id: Mapped[int] = mapped_column(primary_key=True)
     conversation_id: Mapped[str] = mapped_column(String(50), index=True)
+    message_id: Mapped[int | None] = mapped_column(Integer, index=True)  # the customer message it answered; NULL in old rows
     created_at: Mapped[datetime] = mapped_column(default=now, index=True)
     model: Mapped[str] = mapped_column(String(80))
     input_tokens: Mapped[int] = mapped_column(Integer, default=0)
