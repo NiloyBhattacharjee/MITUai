@@ -62,6 +62,21 @@ def handle_text(conv_id: str, channel: str, phone: str, text: str):
         deliver(channel, phone, reply.text)
 
 
+PHOTO_EXT = {"image/jpeg": "jpg", "image/png": "png"}  # what WhatsApp sends and every LLM provider reads
+
+
+def handle_photo(conv_id: str, channel: str, phone: str, data: bytes, mime: str, caption: str = ""):
+    """A customer's photo, e.g. a screenshot of a product post or of a bKash payment. The LLM sees the image."""
+    ext = PHOTO_EXT.get(mime.split(";")[0].strip())
+    if not ext:
+        return canned_reply(conv_id, channel, phone, "unsupported_media", f"[{mime or 'file'}]")
+    fname = f"{uuid.uuid4().hex}.{ext}"  # unguessable: /media is served without auth
+    (MEDIA_DIR / fname).write_bytes(data)
+    reply = agent.respond(conv_id, channel, phone, caption, audio_path=fname)
+    if reply:
+        deliver(channel, phone, reply.text)
+
+
 def canned_reply(conv_id, channel, phone, key: str, user_text: str, is_voice=False, audio_path=None, flag: str | None = None):
     """Store the customer's message and answer with a fixed message from business.yaml (no LLM)."""
     with Session() as db:
@@ -140,6 +155,9 @@ def handle_whatsapp_message(msg: dict):
             data, mime = whatsapp.download_media(msg["audio"]["id"])
             log.info("downloaded voice note in %.2fs", time.perf_counter() - t)
             handle_voice(phone, "whatsapp", phone, data, MIME_EXT.get(mime.split(";")[0].strip(), "ogg"))
+        elif kind == "image":
+            data, mime = whatsapp.download_media(msg["image"]["id"])
+            handle_photo(phone, "whatsapp", phone, data, mime, msg["image"].get("caption", ""))
         else:
             canned_reply(phone, "whatsapp", phone, "unsupported_media", f"[{kind}]")
     except Exception:
@@ -153,12 +171,16 @@ def handle_meta_event(channel: str, event: dict):
     conv_id = f"{channel}-{sender}"
     attachments = msg.get("attachments") or []
     audio = next((a for a in attachments if a.get("type") == "audio"), None)
+    image = next((a for a in attachments if a.get("type") == "image"), None)
     try:
         if msg.get("text"):
             handle_text(conv_id, channel, sender, msg["text"])
         elif audio:
             data, mime = messenger.download(audio["payload"]["url"])
             handle_voice(conv_id, channel, sender, data, MIME_EXT.get(mime.split(";")[0].strip(), "mp4"))
+        elif image:
+            data, mime = messenger.download(image["payload"]["url"])
+            handle_photo(conv_id, channel, sender, data, mime)
         else:
             canned_reply(conv_id, channel, sender, "unsupported_media", f"[{attachments[0].get('type') if attachments else 'message'}]")
     except Exception:

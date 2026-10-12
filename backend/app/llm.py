@@ -1,9 +1,10 @@
 """LLM behind one small interface: run(system, history, tools, call_tool, usage) -> reply text.
 
-history: [{"role": "user"|"assistant", "text": str}], alternating, ending with the user.
+history: [{"role": "user"|"assistant", "text": str, "images": [{"mime": str, "data": bytes}]}], alternating, ending with the user.
 Each provider runs its own tool loop in its native format (keeps thinking/tool blocks intact),
 and appends one {model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens} per API call to usage.
 """
+import base64
 import json
 import logging
 
@@ -30,6 +31,10 @@ def cost_usd(u: dict) -> float | None:
             + u["cache_write_tokens"] * inp * 1.25) / 1_000_000
 
 
+def _b64(image: dict) -> str:
+    return base64.b64encode(image["data"]).decode()
+
+
 def _usage(model, inp=0, out=0, read=0, write=0) -> dict:
     return {"model": model, "input_tokens": inp or 0, "output_tokens": out or 0,
             "cache_read_tokens": read or 0, "cache_write_tokens": write or 0}
@@ -42,7 +47,9 @@ class BedrockLLM:
         self.model = env("BEDROCK_MODEL_ID", "anthropic.claude-opus-5-5")
 
     def run(self, system, history, tools, call_tool, usage=None):
-        messages = [{"role": m["role"], "content": [{"text": m["text"]}]} for m in history]
+        messages = [{"role": m["role"], "content": [
+            *({"image": {"format": i["mime"].split("/")[1], "source": {"bytes": i["data"]}}} for i in m.get("images") or []),
+            {"text": m["text"]}]} for m in history]
         tool_config = {"tools": [{"toolSpec": {"name": t["name"], "description": t["description"],
                                                "inputSchema": {"json": t["input_schema"]}}} for t in tools]}
         for _ in range(MAX_STEPS):
@@ -69,7 +76,9 @@ class AnthropicLLM:
         self.effort = env("LLM_EFFORT", "low")  # short chat replies; raise if quality needs it
 
     def run(self, system, history, tools, call_tool, usage=None):
-        messages = [{"role": m["role"], "content": m["text"]} for m in history]
+        messages = [{"role": m["role"], "content": [
+            *({"type": "image", "source": {"type": "base64", "media_type": i["mime"], "data": _b64(i)}} for i in m.get("images") or []),
+            {"type": "text", "text": m["text"]}]} for m in history]
         for _ in range(MAX_STEPS):
             r = self.client.beta.messages.create(
                 model=self.model, max_tokens=16000, system=system, messages=messages, tools=tools,
@@ -104,7 +113,10 @@ class OllamaLLM:
 
     def run(self, system, history, tools, call_tool, usage=None):
         # /no_think: qwen3's switch; "think": False alone doesn't stop it reasoning after tool results
-        messages = [{"role": "system", "content": system + "\n/no_think"}] + [{"role": m["role"], "content": m["text"]} for m in history]
+        # ponytail: images need a vision model (e.g. qwen2.5vl, gemma3); a text-only model errors and the chat goes to a human.
+        messages = [{"role": "system", "content": system + "\n/no_think"}] + [
+            {"role": m["role"], "content": m["text"], **({"images": [_b64(i) for i in m["images"]]} if m.get("images") else {})}
+            for m in history]
         defs = [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}}
                 for t in tools]
         for _ in range(MAX_STEPS):

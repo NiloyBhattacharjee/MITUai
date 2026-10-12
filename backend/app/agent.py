@@ -1,4 +1,5 @@
 import logging
+import mimetypes
 import re
 import threading
 from collections import defaultdict
@@ -6,7 +7,7 @@ from collections import defaultdict
 from sqlalchemy import select
 
 from . import llm, notify, tools
-from .config import BUSINESS
+from .config import BUSINESS, MEDIA_DIR
 from .db import Conversation, LlmUsage, Message, Session, now
 
 log = logging.getLogger(__name__)
@@ -49,6 +50,8 @@ Ordering, in this order:
 Never say an order is placed unless create_order returned status PLACED.
 5. bKash/Nagad: when the customer sends their transaction ID (TrxID) after paying, call record_payment. Never say a payment is confirmed; the team checks it and confirms here.
 
+Photos: a customer message marked [photo] comes with their image. If it shows clothing (often a screenshot of one of our posts), search the catalogue for it and only say we have it if search finds a match. If it is a bKash/Nagad payment screenshot, read the TrxID and call record_payment.
+
 Handoff: call escalate_to_human if the customer asks for a human/real person, is angry or upset, or asks for something outside what a shop assistant can do from these tools (complaints about a received order, custom tailoring, wholesale, refunds in progress, etc). Then tell them briefly a team member will reply here soon."""
 
 
@@ -69,17 +72,27 @@ def add_message(db, conv: Conversation, role: str, text: str, is_voice=False, au
     return m
 
 
+def _image(path: str) -> list[dict]:
+    f = MEDIA_DIR / path
+    return [{"mime": mimetypes.guess_type(f.name)[0], "data": f.read_bytes()}] if f.is_file() else []
+
+
 def build_history(messages: list[Message]) -> list[dict]:
-    """Owner replies count as the shop (assistant). Merge consecutive same-role turns; start with the user."""
+    """Owner replies count as the shop (assistant). Merge consecutive same-role turns; start with the user.
+    The customer's own photos go to the LLM as images; the product photos the shop sent stay a text note."""
     out = []
     for m in messages:
         role = "user" if m.role == "user" else "assistant"
+        photo = bool(m.audio_path) and tools.is_photo(m.audio_path)
         text = (f"[voice note] {m.text}" if m.is_voice
-                else f"[photo sent] {m.text}" if m.audio_path and tools.is_photo(m.audio_path) else m.text) or "(empty)"
+                else f"[photo] {m.text}" if photo and role == "user"
+                else f"[photo sent] {m.text}" if photo else m.text) or "(empty)"
+        images = _image(m.audio_path) if photo and role == "user" else []
         if out and out[-1]["role"] == role:
             out[-1]["text"] += "\n" + text
+            out[-1]["images"] += images
         else:
-            out.append({"role": role, "text": text})
+            out.append({"role": role, "text": text, "images": images})
     while out and out[0]["role"] != "user":
         out.pop(0)
     return out

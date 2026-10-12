@@ -55,6 +55,8 @@ def graph(monkeypatch):
         sent.append(req)
         if req.url.path.endswith("/media-1"):
             return httpx.Response(200, json={"url": "https://lookaside.fbsbx.com/voice.ogg", "mime_type": "audio/ogg; codecs=opus"})
+        if req.url.path.endswith("/photo-1"):
+            return httpx.Response(200, json={"url": "https://lookaside.fbsbx.com/photo.jpg", "mime_type": "image/jpeg"})
         if req.url.host == "lookaside.fbsbx.com":
             return httpx.Response(200, content=b"OGGDATA")
         return httpx.Response(200, json={"messages": [{"id": "wamid.out"}], "id": "media-out"})
