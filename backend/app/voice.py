@@ -12,7 +12,7 @@ from typing import Protocol
 
 import httpx
 
-from .config import STT_PROVIDER, env
+from .config import BUSINESS, STT_PROVIDER, env
 
 
 @dataclass
@@ -56,7 +56,8 @@ def wav_seconds(wav: bytes) -> float:
 # --- providers ----------------------------------------------------------------------------
 
 OPENAI_URL = "https://api.openai.com/v1/audio"
-STT_HINT = "Customer message to a Bangladeshi clothing shop, in Bangla or English: panjabi, kurti, saree, three-piece, bKash, Nagad, delivery, Dhaka."
+# Whisper spells menu words better when it has seen them.
+STT_HINT = f"Customer message to {BUSINESS['name']}: " + ", ".join(i["name"] for i in BUSINESS.get("menu", [])) + ", pickup, delivery, booking."
 
 
 class OpenAISTT:
@@ -86,7 +87,7 @@ class AWSTranscribeSTT:
         try:
             self.tr.start_transcription_job(TranscriptionJobName=name, MediaFormat="wav",
                                             Media={"MediaFileUri": f"s3://{self.bucket}/{key}"},
-                                            IdentifyLanguage=True, LanguageOptions=["bn-IN", "en-US"])
+                                            LanguageCode=env("TRANSCRIBE_LANGUAGE", "en-US"))
             for _ in range(180):  # batch jobs usually take 10-30 s
                 job = self.tr.get_transcription_job(TranscriptionJobName=name)["TranscriptionJob"]
                 if job["TranscriptionJobStatus"] in ("COMPLETED", "FAILED"):

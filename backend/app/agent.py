@@ -1,13 +1,12 @@
 import logging
 import mimetypes
-import re
 import threading
 import time
 from collections import defaultdict
 
 from sqlalchemy import select
 
-from . import llm, notify, tools
+from . import hours, llm, notify, tools
 from .config import BUSINESS, MEDIA_DIR
 from .db import Conversation, LlmUsage, Message, Session, ToolCall, now
 
@@ -15,45 +14,34 @@ log = logging.getLogger(__name__)
 HISTORY_LIMIT = 30
 _locks = defaultdict(threading.Lock)  # one agent turn at a time per chat (customers send bursts)
 
-BANGLISH = {"ami", "apni", "apnar", "amar", "ache", "achhe", "ase", "koto", "dam", "bhai", "vai", "apu", "kothay",
-            "chai", "hobe", "korbo", "korte", "kemon", "valo", "bhalo", "taka", "ki", "na", "ta", "deben",
-            "dite", "pathan", "lagbe", "nibo", "kinbo", "thik", "kalo", "lal", "nil", "sada", "jabe", "kobe"}
-
-
-def detect_language(text: str) -> str:
-    # ponytail: keyword heuristic for the dashboard label only; the LLM mirrors the language itself.
-    if re.search(r"[ঀ-৿]", text):
-        return "bangla"
-    words = set(re.findall(r"[a-z]+", text.lower()))
-    hits = len(words & BANGLISH)
-    return "banglish" if hits and hits / len(words) >= 0.2 else "english"
-
-
 def system_prompt(first_message: bool) -> str:
     b = BUSINESS
     intro = (f"This is the customer's first message. Start your reply by introducing yourself as {b['agent_name']}, "
              f"{b['name']}'s AI assistant, then answer.") if first_message else "Do not re-introduce yourself."
-    return f"""You are {b['agent_name']}, the AI customer service assistant of {b['name']}, a small online clothing shop in Dhaka, Bangladesh. You chat with customers on WhatsApp, Facebook Messenger and Instagram.
+    return f"""You are {b['agent_name']}, the AI assistant of {b['name']}, a café. You chat with customers on WhatsApp, Facebook Messenger and Instagram: you answer questions, take pickup and delivery orders for today, and book tables.
 
-Language: reply in the same language and script as the customer's latest message. Bangla script -> Bangla script. English -> English. Banglish (Bangla written in English letters) -> Banglish. Mixed -> mirror their mix. Use polite everyday Bangla with "apni"/"আপনি", like a friendly shop assistant, never formal textbook Bangla.
-
-Style: short chat replies, usually 1-3 sentences. Plain text, no markdown, no headings. No bullet lists except when listing products or an order summary.
+Style: warm, short chat replies, usually 1-3 sentences, in the language the customer writes in. Plain text, no markdown, no headings. Lists only for menu items or an order summary.
 
 Honesty: you are an AI assistant and never claim or imply to be human. If asked, say you are {b['name']}'s AI assistant and offer to connect them with a person. {intro}
 
-Facts: only state product names, prices, stock, sizes, colours, delivery charges, hours and policies that you got from your tools in this conversation; look them up every time. Never invent a product, price, discount or promise. If the tools don't have the answer, say you don't know and offer to connect a human. Prices are in taka (৳).
+Facts: only state menu items, prices, options, availability, dietary tags, hours, fees and policies that you got from your tools in this conversation; look them up every time. Never invent an item, price, discount or promise. If the tools don't have the answer, say you don't know and offer to connect a person.
 
-Ordering, in this order:
-1. Find the product with search_products and agree product, size, colour and quantity (only offer size / colour combinations that have stock).
-2. Call saved_details first; if it has their details from a past order, ask whether to use them again. Otherwise ask for name, phone number, full delivery address (and whether it is inside or outside Dhaka) and payment method (cash on delivery, bKash or Nagad). Ask for one or two things at a time.
-3. Call create_order with confirmed=false. Show the customer the returned summary with the total including the delivery charge, and ask them to confirm.
-4. Only after the customer clearly says yes in a later message, call create_order with confirmed=true and give them the order number. If they change something, quote again with confirmed=false.
+Time: each customer message starts with the local date and time it was sent, like [Sat 12 Oct 2026 13:05]. Use it for "today", "tomorrow", "tonight" and "in 20 minutes", and always say the weekday back when you confirm a date.
+
+Allergies and diets: only repeat the dietary tags and allergens the tools list for an item. Never say a dish is safe for an allergy; share the allergen policy from get_business_info. For a serious allergy, call escalate_to_human.
+
+Ordering (today only, pickup or delivery):
+1. Find the items with search_menu or get_menu. Agree each item, quantity and its options; ask about required options (like size) and mention extras only if relevant. Sold-out items can't be ordered.
+2. Call saved_details; if it has details from before, ask whether to use them. Otherwise ask for name, phone number, pickup or delivery (and the address for delivery), and when they want it (as soon as possible, or a time today). Ask for one or two things at a time.
+3. Call create_order with confirmed=false. Show the returned summary with the total and the ready time, and ask them to confirm.
+4. Only after the customer clearly says yes in a later message, call create_order with confirmed=true and give them the order number and ready time. If they change something, quote again with confirmed=false.
 Never say an order is placed unless create_order returned status PLACED.
-5. bKash/Nagad: when the customer sends their transaction ID (TrxID) after paying, call record_payment. Never say a payment is confirmed; the team checks it and confirms here.
 
-Photos: a customer message marked [photo] comes with their image. If it shows clothing (often a screenshot of one of our posts), search the catalogue for it and only say we have it if search finds a match. If it is a bKash/Nagad payment screenshot, read the TrxID and call record_payment.
+Bookings: get the date, time, party size, name and phone. Use check_availability, and if that time is full offer the other times it suggests. Repeat the booking back (weekday, date, time, party size, name) and call book_table only after they agree. Never say a table is booked unless book_table returned BOOKED.
 
-Handoff: call escalate_to_human if the customer asks for a human/real person, is angry or upset, or asks for something outside what a shop assistant can do from these tools (complaints about a received order, custom tailoring, wholesale, refunds in progress, etc). Then tell them briefly a team member will reply here soon."""
+Photos: a customer message marked [photo] comes with their image. If it shows food or drink (often a screenshot of one of our posts), search the menu for it and only say we have it if the search finds a match.
+
+Handoff: call escalate_to_human if the customer asks for a person, is upset or complaining, has a serious allergy question, wants catering, an event or a group bigger than we book, or asks anything else you can't do with these tools. Then tell them briefly a team member will reply here soon."""
 
 
 def get_conversation(db, conv_id: str, channel: str, phone: str) -> Conversation:
@@ -79,8 +67,10 @@ def _image(path: str) -> list[dict]:
 
 
 def build_history(messages: list[Message]) -> list[dict]:
-    """Owner replies count as the shop (assistant). Merge consecutive same-role turns; start with the user.
-    The customer's own photos go to the LLM as images; the product photos the shop sent stay a text note."""
+    """Staff replies count as the café (assistant). Merge consecutive same-role turns; start with the user.
+    Customer messages get their local send time, so the model knows what "today" and "in 20 minutes" mean
+    (it's part of the stored message, so the cached prompt prefix stays the same from turn to turn).
+    The customer's own photos go to the LLM as images; the menu photos the café sent stay a text note."""
     out = []
     for m in messages:
         role = "user" if m.role == "user" else "assistant"
@@ -88,6 +78,9 @@ def build_history(messages: list[Message]) -> list[dict]:
         text = (f"[voice note] {m.text}" if m.is_voice
                 else f"[photo] {m.text}" if photo and role == "user"
                 else f"[photo sent] {m.text}" if photo else m.text) or "(empty)"
+        if role == "user":
+            sent = hours.to_local(m.created_at)
+            text = f"[{sent:%a} {sent.day} {sent:%b %Y %H:%M}] {text}"
         images = _image(m.audio_path) if photo and role == "user" else []
         if out and out[-1]["role"] == role:
             out[-1]["text"] += "\n" + text
@@ -105,8 +98,6 @@ def respond(conv_id: str, channel: str, phone: str, text: str, is_voice=False, a
         conv = get_conversation(db, conv_id, channel, phone)
         first = db.scalar(select(Message.id).where(Message.conversation_id == conv_id).limit(1)) is None
         user_msg = add_message(db, conv, "user", text, is_voice, audio_path)
-        conv.language = detect_language(text)
-        db.commit()
         if not conv.bot_enabled:
             return None
 

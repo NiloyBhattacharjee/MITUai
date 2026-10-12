@@ -5,7 +5,7 @@ from app.agent import respond
 from app.db import init_db
 
 init_db()
-sys.stdout.reconfigure(encoding="utf-8")  # Bangla on Windows consoles
+sys.stdout.reconfigure(encoding="utf-8")  # emoji and accents on Windows consoles
 phone = sys.argv[1] if len(sys.argv) > 1 else "01700000000"
 print("Type a message (Ctrl+C to quit). Chat shows in the dashboard as a simulator session.")
 while True:

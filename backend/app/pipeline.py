@@ -66,7 +66,7 @@ PHOTO_EXT = {"image/jpeg": "jpg", "image/png": "png"}  # what WhatsApp sends and
 
 
 def handle_photo(conv_id: str, channel: str, phone: str, data: bytes, mime: str, caption: str = ""):
-    """A customer's photo, e.g. a screenshot of a product post or of a bKash payment. The LLM sees the image."""
+    """A customer's photo, e.g. a screenshot of a dish from one of our posts. The LLM sees the image."""
     ext = PHOTO_EXT.get(mime.split(";")[0].strip())
     if not ext:
         return canned_reply(conv_id, channel, phone, "unsupported_media", f"[{mime or 'file'}]")

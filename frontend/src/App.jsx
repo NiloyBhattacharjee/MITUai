@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import Simulator from './Simulator.jsx'
-import { Chats, Orders, Products } from './Dashboard.jsx'
+import { Bookings, Chats, Kitchen, Menu, Orders } from './Dashboard.jsx'
 import Analytics from './Analytics.jsx'
-import { Icon, cx } from './ui.jsx'
+import { Icon, cx, setCurrency } from './ui.jsx'
 
 export async function api(path, opts = {}) {
   const res = await fetch(path, {
@@ -85,9 +85,11 @@ function ThemeButton({ className }) {
 
 const PAGES = [
   { id: 'overview', label: 'Overview', el: <Analytics /> },
-  { id: 'chats', label: 'Conversations', short: 'Chats', el: <Chats /> },
+  { id: 'kitchen', label: 'Kitchen', el: <Kitchen /> },
   { id: 'orders', label: 'Orders', el: <Orders /> },
-  { id: 'products', label: 'Products', el: <Products /> },
+  { id: 'bookings', label: 'Bookings', el: <Bookings /> },
+  { id: 'chats', label: 'Conversations', short: 'Chats', el: <Chats /> },
+  { id: 'menu', label: 'Menu', el: <Menu /> },
 ]
 
 function Login({ shop, onDone }) {
@@ -113,8 +115,8 @@ function Login({ shop, onDone }) {
         <div className="absolute bottom-0 right-0 w-[28rem] h-[28rem] rounded-full bg-teal-300/10 blur-3xl" />
         <Brand light />
         <div className="relative max-w-md">
-          <h1 className="text-4xl font-semibold tracking-tight leading-[1.1]">Your shop's AI assistant, and every sale it makes.</h1>
-          <p className="mt-5 text-white/60 leading-relaxed">Revenue, orders and every WhatsApp, Messenger and Instagram chat in one place. Step in whenever a customer needs a person.</p>
+          <h1 className="text-4xl font-semibold tracking-tight leading-[1.1]">Your café's AI assistant, and every order and booking it takes.</h1>
+          <p className="mt-5 text-white/60 leading-relaxed">Orders for the kitchen, table bookings and every WhatsApp, Messenger and Instagram chat in one place. Step in whenever a customer needs a person.</p>
         </div>
         <p className="relative text-xs text-white/40">© {new Date().getFullYear()} {shop.name}</p>
       </div>
@@ -196,7 +198,7 @@ function Shell({ page, shop }) {
         <div key={current.id} className="enter max-w-6xl mx-auto">{current.el}</div>
       </main>
 
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-20 grid grid-cols-4 border-t border-line bg-surface/90 backdrop-blur-lg pb-[env(safe-area-inset-bottom)]">
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-20 grid grid-cols-6 border-t border-line bg-surface/90 backdrop-blur-lg pb-[env(safe-area-inset-bottom)]">
         {PAGES.map((p) => {
           const active = current.id === p.id
           return (
@@ -217,13 +219,13 @@ function Shell({ page, shop }) {
 export default function App() {
   const [hash, setHash] = useState(location.hash)
   const [authed, setAuthed] = useState(!!localStorage.getItem('adminPassword'))
-  const [shop, setShop] = useState({ name: 'Shop' })
+  const [shop, setShop] = useState({ name: 'Café' })
   useEffect(() => {
     const onHash = () => setHash(location.hash)
     const onLogout = () => { localStorage.removeItem('adminPassword'); cache.clear(); setAuthed(false) }
     addEventListener('hashchange', onHash)
     addEventListener('logout', onLogout)
-    api('/api/business').then(setShop).catch(() => {})
+    api('/api/business').then((b) => { setCurrency(b.currency); setShop(b) }).catch(() => {})
     return () => { removeEventListener('hashchange', onHash); removeEventListener('logout', onLogout) }
   }, [])
   if (!authed) return <Login shop={shop} onDone={() => setAuthed(true)} />

@@ -37,18 +37,18 @@ def wa_voice():
 
 
 def test_transcript_goes_through_agent(db, fake_llm, graph, stt):
-    stt(Transcript("ভাই, কালো পাঞ্জাবি আছে?", "bn-IN", 0.92))
-    fake_llm.turns = [lambda history, call: "জি, আছে! দাম ১৪৫০ টাকা।"]
+    stt(Transcript("Can I get a large flat white?", "en", 0.92))
+    fake_llm.turns = [lambda history, call: "Sure! A large flat white is $5.80."]
     pipeline.handle_whatsapp_message(wa_voice())
 
-    assert fake_llm.calls[0][-1]["text"] == "[voice note] ভাই, কালো পাঞ্জাবি আছে?"
+    assert fake_llm.calls[0][-1]["text"].endswith("] [voice note] Can I get a large flat white?")
     user = db.scalars(select(Message).where(Message.role == "user")).one()
-    assert user.is_voice and user.audio_path.endswith(".ogg") and user.text == "ভাই, কালো পাঞ্জাবি আছে?"
-    assert any(b"1450" in r.content or "১৪৫০".encode() in r.content for r in graph)
+    assert user.is_voice and user.audio_path.endswith(".ogg") and user.text == "Can I get a large flat white?"
+    assert any(b"$5.80" in r.content for r in graph)
 
 
 def test_low_confidence_asks_to_repeat(db, fake_llm, graph, stt):
-    stt(Transcript("uh mm", "bn-IN", 0.2))
+    stt(Transcript("uh mm", "en", 0.2))
     pipeline.handle_whatsapp_message(wa_voice())
     assert fake_llm.calls == []  # never guess
     bot = db.scalars(select(Message).where(Message.role == "assistant")).one()

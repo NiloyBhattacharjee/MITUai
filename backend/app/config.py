@@ -13,6 +13,16 @@ def env(name: str, default: str = "") -> str:
 
 
 BUSINESS = yaml.safe_load(Path(env("BUSINESS_FILE", str(ROOT / "business.yaml"))).read_text(encoding="utf-8"))
+CURRENCY = BUSINESS.get("currency", "$")
+
+
+def cents(amount) -> int:
+    """Money is stored as whole cents; business.yaml and the dashboard use normal amounts like 4.50."""
+    return round(float(amount) * 100)
+
+
+def money(amount_cents: int) -> str:
+    return f"{CURRENCY}{amount_cents / 100:,.2f}"
 
 DATABASE_URL = env("DATABASE_URL", f"sqlite:///{ROOT / 'backend' / 'shop.db'}")
 MEDIA_DIR = Path(env("MEDIA_DIR", str(ROOT / "backend" / "media")))

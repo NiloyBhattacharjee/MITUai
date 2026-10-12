@@ -57,18 +57,18 @@ def test_message_cut_off_by_restart_is_resumed(db, fake_llm, graph):
     assert post_signed(wa_payload("wamid.ok")).status_code == 200
     assert db.get(SeenWhatsAppMessage, "wamid.ok", populate_existing=True).done
 
-    msg = wa_payload("wamid.cut", "kurti ache?")["entry"][0]["changes"][0]["value"]["messages"][0]
+    msg = wa_payload("wamid.cut", "are you open?")["entry"][0]["changes"][0]["value"]["messages"][0]
     db.add(SeenWhatsAppMessage(id="wamid.cut", payload=msg, done=False))  # stored, then the server died
     db.add(SeenWhatsAppMessage(id="wamid.legacy"))  # row from before the inbox existed: done is NULL, not pending
     db.commit()
     resume_unfinished()
-    assert fake_llm.calls[-1][-1]["text"].endswith("kurti ache?") and len(fake_llm.calls) == 2
+    assert fake_llm.calls[-1][-1]["text"].endswith("are you open?") and len(fake_llm.calls) == 2
     assert db.get(SeenWhatsAppMessage, "wamid.cut", populate_existing=True).done
     resume_unfinished()
     assert len(fake_llm.calls) == 2  # nothing left to resume
 
 
-def fb_payload(obj="page", mid="m.1", text="kalo panjabi ache?", echo=False):
+def fb_payload(obj="page", mid="m.1", text="do you have oat milk?", echo=False):
     return {"object": obj, "entry": [{"messaging": [
         {"sender": {"id": "psid-42"}, "recipient": {"id": "page-1"}, "message": {"mid": mid, "text": text, "is_echo": echo}}]}]}
 
@@ -85,7 +85,7 @@ def test_messenger_and_instagram_reach_mitu(db, fake_llm, graph):
     for _ in range(2):  # Meta retry
         assert post_fb(fb_payload()).status_code == 200
     assert post_fb(fb_payload(mid="m.echo", echo=True)).status_code == 200  # copy of our own reply: ignored
-    assert post_fb(fb_payload("instagram", mid="ig.1", text="price koto?")).status_code == 200
+    assert post_fb(fb_payload("instagram", mid="ig.1", text="how much is a latte?")).status_code == 200
 
     assert len(fake_llm.calls) == 2
     assert db.get(Conversation, "messenger-psid-42").channel == "messenger"
@@ -97,18 +97,18 @@ def test_messenger_and_instagram_reach_mitu(db, fake_llm, graph):
 
 def test_messenger_photo_sent_by_public_url(db, fake_llm, graph):
     from app.config import MEDIA_DIR
-    (MEDIA_DIR / "products").mkdir(exist_ok=True)
-    (MEDIA_DIR / "products" / "P01.jpg").write_bytes(b"JPEGDATA")
-    fake_llm.turns = [lambda h, call: call("send_product_photo", {"product_id": "P01"}) and "Eita dekhen"]
-    post_fb(fb_payload(text="chobi dekhan"))
+    (MEDIA_DIR / "menu").mkdir(exist_ok=True)
+    (MEDIA_DIR / "menu" / "M01.jpg").write_bytes(b"JPEGDATA")
+    fake_llm.turns = [lambda h, call: call("send_item_photo", {"item_id": "M01"}) and "Here it is"]
+    post_fb(fb_payload(text="can I see a photo?"))
     sent = [json.loads(r.content)["message"] for r in graph if r.url.path.endswith("/me/messages")]
-    assert sent[0] == {"attachment": {"type": "image", "payload": {"url": "https://shop.test/media/products/P01.jpg", "is_reusable": True}}}
-    assert sent[1]["text"].startswith("Black Cotton Panjabi") and sent[2] == {"text": "Eita dekhen"}
+    assert sent[0] == {"attachment": {"type": "image", "payload": {"url": "https://shop.test/media/menu/M01.jpg", "is_reusable": True}}}
+    assert sent[1]["text"] == "Flat White – $5.00" and sent[2] == {"text": "Here it is"}
 
 
 def test_customer_photo_reaches_the_llm_as_an_image(db, fake_llm, graph):
-    msg = {"from": "8801712345678", "id": "wamid.photo", "type": "image", "image": {"id": "photo-1", "caption": "eta ache?"}}
+    msg = {"from": "8801712345678", "id": "wamid.photo", "type": "image", "image": {"id": "photo-1", "caption": "do you have this?"}}
     assert post_signed({"entry": [{"changes": [{"value": {"messages": [msg]}}]}]}).status_code == 200
     turn = fake_llm.calls[-1][-1]
-    assert turn["text"] == "[photo] eta ache?" and turn["images"] == [{"mime": "image/jpeg", "data": b"OGGDATA"}]
+    assert turn["text"].endswith("] [photo] do you have this?") and turn["images"] == [{"mime": "image/jpeg", "data": b"OGGDATA"}]
     assert db.scalar(select(Message).where(Message.role == "user")).audio_path.endswith(".jpg")

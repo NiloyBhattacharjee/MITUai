@@ -13,9 +13,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import httpx  # noqa: E402
 import pytest  # noqa: E402
 
-from app import llm, whatsapp  # noqa: E402
+from datetime import datetime  # noqa: E402
+
+from app import hours, llm, whatsapp  # noqa: E402
 from app.config import BUSINESS  # noqa: E402
-from app.db import Base, Session, engine, new_product  # noqa: E402
+from app.db import Base, Session, engine, new_item  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -23,9 +25,19 @@ def db():
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     with Session() as s:
-        s.add_all(new_product(p) for p in BUSINESS["products"])
+        s.add_all(new_item(i) for i in BUSINESS["menu"])
         s.commit()
         yield s
+
+
+NOW = datetime.now(hours.TZ).replace(hour=10, minute=0, second=0, microsecond=0, tzinfo=None)  # the café is open at 10:00 every day
+
+
+@pytest.fixture(autouse=True)
+def clock(monkeypatch):
+    """The café's clock reads 10:00 today, so order and booking rules don't depend on when the tests run."""
+    monkeypatch.setattr(hours, "local_now", lambda: NOW)
+    return NOW
 
 
 class FakeLLM:
