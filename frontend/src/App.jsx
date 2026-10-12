@@ -102,7 +102,7 @@ function Login({ shop, onDone }) {
       await api('/api/me')
       onDone()
     } catch (err) {
-      setError(err.status === 401 ? 'Wrong password. Try again.' : 'Cannot reach the server.')
+      setError(err.status === 401 ? 'Wrong password. Try again.' : err.status === 429 ? 'Too many wrong passwords. Try again in 15 minutes.' : 'Cannot reach the server.')
     }
     setBusy(false)
   }
@@ -127,7 +127,6 @@ function Login({ shop, onDone }) {
           <input id="pw" type="password" value={pw} onChange={(e) => { setPw(e.target.value); setError('') }} autoFocus required className="field h-11!" />
           {error && <p role="alert" className="mt-2 text-sm text-danger">{error}</p>}
           <button disabled={busy} className="btn btn-primary w-full h-11! mt-5">{busy ? 'Signing in…' : 'Sign in'}</button>
-          <a href="#/simulator" className="block mt-8 text-center text-sm text-muted hover:text-ink">Try the chat simulator →</a>
         </form>
       </div>
     </div>
@@ -227,6 +226,7 @@ export default function App() {
     api('/api/business').then(setShop).catch(() => {})
     return () => { removeEventListener('hashchange', onHash); removeEventListener('logout', onLogout) }
   }, [])
+  if (!authed) return <Login shop={shop} onDone={() => setAuthed(true)} />
   if (hash === '#/simulator') return (
     <div className="min-h-dvh">
       <nav className="sticky top-0 z-20 flex items-center justify-between px-4 md:px-8 h-14 border-b border-line bg-canvas/80 backdrop-blur-lg">
@@ -239,6 +239,5 @@ export default function App() {
       <Simulator />
     </div>
   )
-  if (!authed) return <Login shop={shop} onDone={() => setAuthed(true)} />
   return <Shell page={hash.replace('#/', '')} shop={shop} />
 }

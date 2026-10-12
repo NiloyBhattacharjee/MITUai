@@ -12,6 +12,7 @@ id_ed25519*
 *.db-journal
 *.sqlite*
 backend/media/
+backups/
 
 # Build and tool output
 .venv/

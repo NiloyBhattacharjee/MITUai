@@ -17,9 +17,9 @@ BUSINESS = yaml.safe_load(Path(env("BUSINESS_FILE", str(ROOT / "business.yaml"))
 DATABASE_URL = env("DATABASE_URL", f"sqlite:///{ROOT / 'backend' / 'shop.db'}")
 MEDIA_DIR = Path(env("MEDIA_DIR", str(ROOT / "backend" / "media")))
 MEDIA_DIR.mkdir(parents=True, exist_ok=True)
-ADMIN_PASSWORD = env("ADMIN_PASSWORD", "admin")
+ADMIN_PASSWORD = env("ADMIN_PASSWORD")  # required: the server refuses to start without a real one
 
-LLM_PROVIDER = env("LLM_PROVIDER", "bedrock")  # bedrock | anthropic
+LLM_PROVIDER = env("LLM_PROVIDER", "bedrock")  # bedrock | anthropic | ollama
 
 WHATSAPP_TOKEN = env("WHATSAPP_TOKEN")
 WHATSAPP_PHONE_NUMBER_ID = env("WHATSAPP_PHONE_NUMBER_ID")

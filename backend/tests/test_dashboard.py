@@ -39,3 +39,17 @@ def test_orders_export_opens_in_excel_with_bangla_and_no_formulas(db):
     assert row["Customer"] == "'=HYPERLINK(\"http://evil\")"  # stays text, never runs
     assert row["Address"] == "ধানমন্ডি, ঢাকা" and row["Items"] == "2x Black Cotton Panjabi (L, Black)"
     assert (row["Total"], row["Paid"], row["TrxID"], row["Status"]) == ("2970", "yes", "9CD45XK2LM", "shipped")
+
+
+def test_simulator_needs_login_and_guessing_locks_out(fake_llm):
+    from app import main
+    main._wrong.clear()
+    assert client.post("/api/sim/message", json={"phone": "017", "text": "hi"}).status_code == 401
+    assert client.get("/api/sim/017/messages").status_code == 401
+    assert fake_llm.calls == []  # nothing reached the paid LLM
+    assert client.post("/api/sim/message", json={"phone": "017", "text": "hi"}, headers={"X-Admin-Password": "pw"}).status_code == 200
+
+    for _ in range(10):
+        assert client.get("/api/me", headers={"X-Admin-Password": "guess"}).status_code == 401
+    assert client.get("/api/me", headers={"X-Admin-Password": "pw"}).status_code == 429  # even the right one, from this IP
+    main._wrong.clear()

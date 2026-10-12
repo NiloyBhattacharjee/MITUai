@@ -4,4 +4,5 @@ WORKDIR /srv/backend
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
-CMD ["sh", "-c", "python seed.py --if-empty && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+# --proxy-headers: the real client IP comes from Caddy (for the login lockout); only Caddy can reach this port
+CMD ["sh", "-c", "python seed.py --if-empty && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"]

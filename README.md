@@ -2,7 +2,7 @@
 
 Mitu answers customers of **Shuta Fashion**, a demo Dhaka clothing shop. It replies in Bangla, English or Banglish (whatever the customer used), answers product, delivery and policy questions, takes orders, checks order status, understands voice notes and photos (product screenshots, bKash receipts), and hands off to a human when needed.
 
-- **Chat simulator** (`#/simulator`): a WhatsApp-style phone screen in the browser, with a hold-to-record mic and a photo button.
+- **Chat simulator** (`#/simulator`, signed-in staff only, since every message runs the paid LLM): a WhatsApp-style phone screen in the browser, with a hold-to-record mic and a photo button.
 - **Real WhatsApp**: through the official WhatsApp Cloud API webhook.
 - **Dashboard** (home page, password login): sales analytics (revenue per day, top products, payment and delivery mix, order status, AI-handled share, each compared with the previous period), live chats with human replies and a bot on/off switch per chat, and orders.
 
@@ -46,7 +46,7 @@ npm install
 npm run dev                                      # http://localhost:5173
 ```
 
-Open http://localhost:5173. The dashboard is the home page and asks for `ADMIN_PASSWORD`. The simulator is at `#/simulator`.
+Open http://localhost:5173. The dashboard is the home page and asks for `ADMIN_PASSWORD` (the server refuses to start while it's empty, `admin` or `change-me`). The simulator is at `#/simulator` once you're signed in.
 
 Run the tests (no credentials needed, the LLM and Graph API are mocked):
 
@@ -54,7 +54,7 @@ Run the tests (no credentials needed, the LLM and Graph API are mocked):
 cd backend && .venv/bin/python -m pytest
 ```
 
-**Docker:** `cp .env.example .env`, fill it in, then `docker compose up --build`. The frontend runs on :5173 and the backend on :8000. Seed data loads on first start, and the database and voice files live in the `data` volume.
+**Docker:** `cp .env.example .env`, fill it in, then `docker compose up --build` and open http://localhost. Caddy serves the app and passes `/api`, `/media` and the webhooks to the backend, which has no public port. Seed data loads on first start, and the database and voice files live in the `data` volume. A `backup` container writes a `.tar.gz` of the database and media to `./backups` at start and then daily, keeping 14.
 
 ### LLM settings
 
@@ -106,7 +106,9 @@ For products, give each one an `id`, both names, a `category`, `aliases` (the sp
 | `DEPLOY_SSH_KEY` | That user's private key |
 
 Update the production settings with `gh secret set ENV_FILE < .env.production` and re-run the workflow.
-The server keeps its database and media in the `data` Docker volume; back it up.
+On the server, set `SITE_ADDRESS` in `ENV_FILE` to your domain and point the domain's DNS at the server with ports 80 and 443 open: Caddy gets and renews the HTTPS certificate itself. Your webhook URLs are then `https://<domain>/webhook` and `https://<domain>/messenger/webhook`.
+
+Backups land in `~/mituai/backups` on the server. **Copy them off the server** (e.g. a nightly `rclone copy` or `aws s3 sync` from cron): a backup on the same disk doesn't survive losing the server. To restore, stop the stack, put `shop.db` and `media/` from an archive back into the `data` volume, and start it again.
 
 ## Voice notes
 
@@ -130,7 +132,7 @@ Simplest options picked where the brief was open:
 - **`% handled fully by AI`** counts today's chats that were never flagged and got no human reply.
 - **"Today"** uses `timezone` from `business.yaml` (Asia/Dhaka).
 - **Live updates** use polling (1–5 s), not websockets.
-- **Dashboard auth** is one password in `.env`, sent as a header. Voice files under `/media` are public but have random 128-bit names.
+- **Dashboard auth** is one password per person in `.env`, sent as a header (so HTTPS matters). 10 wrong passwords from one IP lock that IP out for 15 minutes; per IP, so a guesser can't lock the owner out. The lockout is in memory and resets on restart. Voice files under `/media` are public but have random 128-bit names.
 - **The simulator** runs in background tasks like WhatsApp and the page polls, so it exercises the exact same path. Simulator chat IDs are `sim-<phone>`.
 - **TTS** has one provider (OpenAI) because Amazon Polly has no Bangla voice.
 - **Product search** is a fuzzy scan in Python over names, Bangla names and aliases, which is fine for a small catalogue.
