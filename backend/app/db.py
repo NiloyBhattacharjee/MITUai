@@ -84,13 +84,16 @@ class MenuItem(Scoped, Base):
     allergens: Mapped[list] = mapped_column(JSON, default=list)
     aliases: Mapped[list] = mapped_column(JSON, default=list)  # other names customers use; helps search
     available: Mapped[bool] = mapped_column(Boolean, default=True)  # False = sold out
+    stock: Mapped[int | None] = mapped_column(Integer)  # how many are left; None = not counted (a switch is enough)
+    minutes: Mapped[int | None] = mapped_column(Integer)  # set = a service booked as an appointment, not ordered
 
 
 def new_item(data: dict) -> MenuItem:
     """A menu item from business.yaml-style fields (price as an amount, options as lines)."""
     return MenuItem(id=data["id"], name=data["name"], category=str(data["category"]).lower(), description=data.get("description", ""),
                     price=cents(data["price"]), options=options.parse(data.get("options", [])), dietary=data.get("dietary", []),
-                    allergens=data.get("allergens", []), aliases=data.get("aliases", []), available=data.get("available", True))
+                    allergens=data.get("allergens", []), aliases=data.get("aliases", []), available=data.get("available", True),
+                    stock=data.get("stock"), minutes=data.get("minutes"))
 
 
 class Conversation(Scoped, Base):
@@ -156,6 +159,11 @@ class Booking(Scoped, Base):
     phone: Mapped[str] = mapped_column(String(20))
     party_size: Mapped[int] = mapped_column(Integer)
     at: Mapped[datetime] = mapped_column(index=True)  # UTC
+    # Appointments (a service with one person) also live here; a table booking leaves these empty.
+    service_id: Mapped[str | None] = mapped_column(String(20))
+    service: Mapped[str | None] = mapped_column(String(200))  # its name when booked
+    provider: Mapped[str | None] = mapped_column(String(50))  # who does it
+    minutes: Mapped[int | None] = mapped_column(Integer)
     notes: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default="booked")
     created_at: Mapped[datetime] = mapped_column(default=now)

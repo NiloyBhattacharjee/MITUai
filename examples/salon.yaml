@@ -1,0 +1,54 @@
+# A business that books appointments instead of taking orders: it has an appointments section and no fulfilment.
+# Items with minutes are services. Run it with BUSINESS_FILE=examples/salon.yaml, or add it next to other businesses:
+#   cd backend && python manage.py add-shop bloom ../examples/salon.yaml --owner-password PASSWORD
+name: Bloom Hair & Beauty
+kind: a hair and beauty salon
+agent_name: Mitu
+timezone: Australia/Sydney
+currency: "$"
+location: "18 Enmore Road, Newtown NSW 2042. Street parking on Enmore Rd; Newtown station is a 6-minute walk."
+about: "Friendly neighbourhood salon: cuts, colour, blow-dries, nails and brows."
+
+# Appointments start and finish inside these hours.
+hours:
+  mon: "09:00-17:00"
+  tue: "09:00-17:00"
+  wed: "09:00-19:00"
+  thu: "09:00-19:00"
+  fri: "09:00-17:00"
+  sat: "09:00-16:00"
+  sun: "10:00-15:00"
+
+appointments:
+  days_ahead: 30
+  slot_minutes: 15     # start times are offered every 15 minutes
+  policy: "Please give us 24 hours' notice to cancel or move an appointment. Colour needs a skin test 48 hours before."
+  # Who does what: "all", or the ids of the services they do.
+  providers:
+    Ava: all
+    Leo: [S01, S02, S03, S04]
+    Mei: [S05, S06, S07]
+
+messages:
+  handoff: "No problem, someone from our team will reply here shortly."
+  unsupported_media: "Sorry, I can only read text, voice notes and photos (JPG/PNG) for now. Type your question, or ask for a person."
+  voice_unclear: "Sorry, I couldn't catch that voice note. Could you say it again or type it?"
+  voice_too_long: "That voice note is a bit long. Please send one under 2 minutes, or type it."
+  error: "Sorry, something went wrong on our side. Someone from our team will reply soon."
+  appointment_cancelled: "Your {service} appointment on {when} has been cancelled. Message us here if you'd like another time."
+  approval_approved: "Good news: the team approved your request ({summary}). {note}"
+  approval_declined: "Sorry, the team couldn't approve your request ({summary}). {note}"
+
+saved_replies:
+  - "Thanks for your patience! Let me check the book for you."
+  - "We'd love to see you again. Would you like to book your next appointment?"
+
+# Services: minutes is how long it takes (and makes it bookable). price is where it starts.
+menu:
+  - {id: S01, name: Women's Cut & Blow-dry, category: hair, price: 85.00, minutes: 60, description: "Wash, cut and blow-dry.", aliases: [haircut, cut, trim]}
+  - {id: S02, name: Men's Cut, category: hair, price: 45.00, minutes: 30, description: "Clipper or scissor cut, wash and style.", aliases: [haircut, mens haircut, fade]}
+  - {id: S03, name: Blow-dry, category: hair, price: 55.00, minutes: 45, description: "Wash and blow-dry, straight or waves.", aliases: [blowout, blow wave]}
+  - {id: S04, name: Kids' Cut, category: hair, price: 30.00, minutes: 30, description: "Under 12.", aliases: [child haircut]}
+  - {id: S05, name: Full Colour, category: colour, price: 140.00, minutes: 120, description: "Root-to-tip colour with toner and blow-dry. Needs a skin test 48 hours before.", aliases: [hair colour, dye, color]}
+  - {id: S06, name: Gel Manicure, category: nails, price: 55.00, minutes: 45, description: "Shape, cuticle care and gel polish.", aliases: [nails, shellac, manicure]}
+  - {id: S07, name: Brow Shape & Tint, category: brows, price: 35.00, minutes: 30, description: "Wax shape and tint.", aliases: [eyebrows, brows]}

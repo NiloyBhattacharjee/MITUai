@@ -10,7 +10,7 @@ from datetime import datetime, time, timedelta
 
 from sqlalchemy import func, select
 
-from app import auth, config, hours, shops, tenancy
+from app import auth, config, hours, shops, tenancy, tools
 from app.config import cents
 from app.db import Booking, MenuItem, Order, Session, Shop, init_db
 
@@ -43,6 +43,9 @@ def first_shop(db) -> Shop:
 
 
 def samples(db, demo: bool):
+    if not ({"pickup", "delivery"} <= set(tools.fulfilment()) and tools.tables()):
+        print("Sample orders and bookings fit the café example only; skipped them.")
+        return
     menu = db.scalars(select(MenuItem).where(MenuItem.available)).all()
     names = ["Olivia Chen", "Jack Wilson", "Priya Sharma", "Liam Nguyen", "Sophie Brown", "Noah Martin", "Mia Rossi"]
     if not db.scalar(select(func.count(Order.id))):

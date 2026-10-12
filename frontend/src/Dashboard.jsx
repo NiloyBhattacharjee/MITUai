@@ -396,7 +396,7 @@ export function Bookings() {
   const today = new Date().toDateString()
   return (
     <>
-      <PageHeader title="Bookings" sub="Tables the assistant booked for the next two weeks. Cancelling tells the customer." />
+      <PageHeader title="Bookings" sub="Tables and appointments the assistant booked for the next two weeks. Cancelling tells the customer." />
       {!rows && <Skeleton className="h-48 rounded-2xl!" />}
       {rows?.length === 0 && <div className="card"><Empty icon="bookings" title="No bookings yet">Customers can book a table in any chat.</Empty></div>}
       <div className="space-y-6">
@@ -412,7 +412,9 @@ export function Bookings() {
                 {d.rows.map((b) => (
                   <li key={b.id} className={cx('flex flex-wrap items-center gap-x-5 gap-y-2 px-5 py-3 border-b border-line last:border-0', b.status === 'cancelled' && 'opacity-50')}>
                     <span className="w-20 font-semibold tabular-nums whitespace-nowrap">{clock(b.at)}</span>
-                    <span className="flex items-center gap-1.5 w-16 text-sm text-muted tabular-nums"><Icon name="users" className="w-4 h-4" />{b.party_size}</span>
+                    {b.service
+                      ? <span className="w-40 text-sm"><span className="font-medium">{b.service}</span><span className="block text-xs text-muted">{b.provider} · {b.minutes} min</span></span>
+                      : <span className="flex items-center gap-1.5 w-16 text-sm text-muted tabular-nums"><Icon name="users" className="w-4 h-4" />{b.party_size}</span>}
                     <div className="min-w-40 flex-1">
                       <div className="text-sm font-medium">{b.customer_name}</div>
                       <div className="text-xs text-muted tabular-nums">{b.phone}{b.notes && <span className="text-warn"> · {b.notes}</span>}</div>
@@ -582,7 +584,7 @@ export function Menu() {
               </div>
               <div className="px-4 pt-4">
                 <div className="font-medium leading-snug line-clamp-2">{i.name}</div>
-                <div className="text-xs text-faint truncate mt-1 capitalize">{i.category}{i.dietary.length > 0 && ` · ${i.dietary.join(', ')}`}</div>
+                <div className="text-xs text-faint truncate mt-1 capitalize">{i.category}{i.minutes && ` · ${i.minutes} min`}{i.stock != null && ` · ${i.stock} left`}{i.dietary.length > 0 && ` · ${i.dietary.join(', ')}`}</div>
               </div>
             </button>
             <div className="px-4 pb-4 mt-4 flex items-center justify-between gap-2">
@@ -635,15 +637,17 @@ const csv = (s) => s.split(',').map((x) => x.trim()).filter(Boolean)
 function ItemForm({ item, categories, onSaved, onCancel }) {
   const [f, setF] = useState(item
     ? { name: item.name, category: item.category, price: (item.price / 100).toFixed(2), description: item.description,
-        options: item.options.join('\n'), dietary: item.dietary.join(', '), allergens: item.allergens.join(', '), aliases: item.aliases.join(', ') }
-    : { name: '', category: '', price: '', description: '', options: '', dietary: '', allergens: '', aliases: '' })
+        options: item.options.join('\n'), dietary: item.dietary.join(', '), allergens: item.allergens.join(', '), aliases: item.aliases.join(', '),
+        stock: item.stock ?? '', minutes: item.minutes ?? '' }
+    : { name: '', category: '', price: '', description: '', options: '', dietary: '', allergens: '', aliases: '', stock: '', minutes: '' })
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const set = (k) => (e) => { setF({ ...f, [k]: e.target.value }); setError('') }
   const submit = async (e) => {
     e.preventDefault()
     const body = { ...f, price: Number(f.price), options: f.options.split('\n').map((l) => l.trim()).filter(Boolean),
-      dietary: csv(f.dietary), allergens: csv(f.allergens), aliases: csv(f.aliases) }
+      dietary: csv(f.dietary), allergens: csv(f.allergens), aliases: csv(f.aliases),
+      stock: f.stock === '' ? null : Number(f.stock), minutes: f.minutes === '' ? null : Number(f.minutes) }
     setSaving(true)
     try {
       onSaved(await api(item ? `/api/menu/${item.id}` : '/api/menu', { method: item ? 'PATCH' : 'POST', body: JSON.stringify(body) }))
@@ -677,6 +681,10 @@ function ItemForm({ item, categories, onSaved, onCancel }) {
         'One group per line. * = the customer must pick one, (any) = they can pick several, +0.80 = extra cost.')}
       {field('dietary', 'Dietary', { placeholder: 'vegetarian, gluten-free' }, 'The assistant only repeats what you write here.')}
       {field('allergens', 'Allergens', { placeholder: 'milk, nuts' })}
+      {field('stock', 'How many are left', { type: 'number', min: 0, step: 1, inputMode: 'numeric', placeholder: 'not counted' },
+        'Optional. The assistant won\'t sell more; cancelled orders put them back.')}
+      {field('minutes', 'Appointment length (minutes)', { type: 'number', min: 5, step: 5, inputMode: 'numeric', placeholder: 'not a service' },
+        'Only for services customers book a time for.')}
       <div className="sm:col-span-2">{field('aliases', 'Other names customers use', { placeholder: 'mocha, iced coffee' }, 'Optional. Helps the assistant find it.')}</div>
       {error && <p role="alert" className="sm:col-span-2 text-sm text-danger">{error}</p>}
       <div className="sm:col-span-2 flex justify-end gap-2 pt-1">

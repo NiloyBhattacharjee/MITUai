@@ -1,0 +1,65 @@
+# A shop that sells through Facebook and Instagram and delivers: orders up to a week ahead, stock counts, cash on
+# delivery or bKash, no table bookings (no reservations section). Run it with BUSINESS_FILE=examples/online-shop.yaml,
+# or add it next to other businesses:
+#   cd backend && python manage.py add-shop nakshi ../examples/online-shop.yaml --owner-password PASSWORD
+name: Nakshi Threads
+kind: an online clothing shop
+agent_name: Mitu
+timezone: Asia/Dhaka
+currency: "৳"
+location: "We deliver across Bangladesh. Pickup from our studio: House 12, Road 5, Dhanmondi, Dhaka."
+about: "Hand-finished kurtis, three-pieces, sarees and panjabis, made in small batches in Dhaka."
+
+# When we pack and hand over orders. A delivery is booked for a day and time inside these.
+hours:
+  sat: "10:00-20:00"
+  sun: "10:00-20:00"
+  mon: "10:00-20:00"
+  tue: "10:00-20:00"
+  wed: "10:00-20:00"
+  thu: "10:00-20:00"
+  fri: "15:00-20:00"
+prep_minutes: 120          # the earliest an order can go out after it's placed
+orders_days_ahead: 7       # customers can ask for a later day; 0 = today only
+quote_reminder_minutes: 30
+
+fulfilment:
+  inside_dhaka: {label: Delivery inside Dhaka, fee: 70, needs_address: true, note: "1-2 days. Pay the rider if you chose cash on delivery."}
+  outside_dhaka: {label: Delivery outside Dhaka, fee: 130, needs_address: true, note: "2-4 days by courier."}
+  pickup: {label: Pickup from our studio, fee: 0, note: "House 12, Road 5, Dhanmondi. Mention your order number."}
+
+payment_methods:
+  cod: {label: Cash on delivery, note: "Pay the rider when it arrives."}
+  bkash: {label: bKash, note: "Send Payment to 01700-000000 (merchant) and reply here with the transaction ID. We pack it once it arrives."}
+
+messages:
+  handoff: "No problem, someone from our team will reply here shortly."
+  unsupported_media: "Sorry, I can only read text, voice notes and photos (JPG/PNG) for now. Type your question, or ask for a person."
+  voice_unclear: "Sorry, I couldn't catch that voice note. Could you say it again or type it?"
+  voice_too_long: "That voice note is a bit long. Please send one under 2 minutes, or type it."
+  error: "Sorry, something went wrong on our side. Someone from our team will reply soon."
+  order_preparing: "We're packing your order #{order_id} now."
+  order_ready_pickup: "Your order #{order_id} is ready to collect from our studio."
+  order_ready: "Your order #{order_id} is on its way."
+  order_cancelled: "Your order #{order_id} has been cancelled. Message us here if you have any questions."
+  quote_reminder: "Just checking: would you like me to place your order ({total})? Reply yes to confirm, or tell me what to change."
+  approval_approved: "Good news: the team approved your request ({summary}). {note}"
+  approval_declined: "Sorry, the team couldn't approve your request ({summary}). {note}"
+
+saved_replies:
+  - "Thanks for your order! We'll confirm as soon as the bKash payment arrives."
+  - "Your parcel is with the courier and should reach you soon."
+
+# stock: how many are left (the assistant won't sell more; cancelled orders put them back). Leave it out to not count.
+menu:
+  - {id: P01, name: Indigo Block-print Kurti, category: kurti, price: 1450, stock: 12, description: "Cotton, hand block-printed, three-quarter sleeves.",
+     options: ["Size*: S, M, L, XL"], aliases: [blue kurti, kurta, tunic]}
+  - {id: P02, name: Mustard Embroidered Kurti, category: kurti, price: 1650, stock: 3, description: "Cotton with hand embroidery at the neck.",
+     options: ["Size*: S, M, L, XL"], aliases: [yellow kurti, kurta]}
+  - {id: P03, name: Jamdani Three-piece, category: three-piece, price: 3200, stock: 5, description: "Kameez, salwar and orna. Unstitched.",
+     aliases: [salwar kameez, 3 piece, three piece]}
+  - {id: P04, name: Tangail Cotton Saree, category: saree, price: 2800, stock: 4, description: "Handloom cotton with a contrast border, 5.5 m.",
+     options: ["Colour*: Red, Green, Off-white"], aliases: [sari, cotton saree]}
+  - {id: P05, name: Men's Cotton Panjabi, category: panjabi, price: 1900, stock: 0, description: "Cotton, mandarin collar, wooden buttons.",
+     options: ["Size*: 38, 40, 42, 44"], aliases: [punjabi, kurta]}
+  - {id: P06, name: Gift Wrapping, category: extras, price: 100, description: "Handmade paper and a card with your message.", aliases: [gift wrap]}
