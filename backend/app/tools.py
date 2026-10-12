@@ -210,6 +210,22 @@ def get_order_status(ctx: Ctx, order_id: int | None = None, phone: str | None = 
     return {"orders": [order_dict(o) for o in orders]} if orders else {"error": f"No orders for {p}"}
 
 
+def cancel_order(ctx: Ctx, order_id: int) -> dict:
+    o = ctx.db.get(Order, int(order_id))
+    if not o or o.conversation_id != ctx.conv.id:
+        return {"error": f"No order #{order_id} was placed in this chat."}
+    if o.status not in ("new", "confirmed"):
+        return {"error": f"Order #{o.id} is {o.status}, so it can't be cancelled here.", "instruction": "Offer to connect a human."}
+    if o.paid or o.payment_ref:
+        return {"error": f"Order #{o.id} is already paid, so it needs a refund.", "instruction": "Call escalate_to_human."}
+    release_stock(ctx.db, o.items)
+    o.status = "cancelled"
+    ctx.db.commit()
+    notify.email_owner(f"Order #{o.id} cancelled by the customer",
+                       f"{o.customer_name} cancelled order #{o.id} (৳{o.total}) in the chat. Its stock is back on sale.")
+    return {"status": "CANCELLED", "order_id": o.id}
+
+
 def get_business_info(ctx: Ctx, topic: str) -> dict:
     b = BUSINESS
     info = {"hours": b["hours"], "location": b["location"], "delivery": DELIVERY,
@@ -249,7 +265,7 @@ def send_product_photo(ctx: Ctx, product_id: str) -> dict:
 
 
 FUNCTIONS = {f.__name__: f for f in [search_products, get_product, send_product_photo, create_order, record_payment,
-                                     get_order_status, get_business_info, escalate_to_human]}
+                                     get_order_status, cancel_order, get_business_info, escalate_to_human]}
 
 _item = {"type": "object", "properties": {
     "product_id": {"type": "string"}, "size": {"type": "string"}, "colour": {"type": "string"},
@@ -282,6 +298,10 @@ SPECS = [
                       "required": ["order_id", "transaction_id"]}},
     {"name": "get_order_status", "description": "Look up an order by order number, or recent orders by phone number.",
      "input_schema": {"type": "object", "properties": {"order_id": {"type": "integer"}, "phone": {"type": "string"}}}},
+    {"name": "cancel_order",
+     "description": "Cancel an order placed in this chat that hasn't shipped. Only call it after the customer clearly asked to cancel "
+                    "that order number (look it up with get_order_status if they don't know it).",
+     "input_schema": {"type": "object", "properties": {"order_id": {"type": "integer"}}, "required": ["order_id"]}},
     {"name": "get_business_info", "description": "Shop facts: opening hours, location, delivery charges/times, payment methods, return policy.",
      "input_schema": {"type": "object", "properties": {
          "topic": {"type": "string", "enum": ["hours", "location", "delivery", "payment", "returns", "about"]}},
