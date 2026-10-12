@@ -122,7 +122,7 @@ def test_bookings_respect_hours_and_seats(db, clock):
     assert "can't book" in check_availability(c, tomorrow, "23:00", 2)["problems"][0]
     assert "passed" in check_availability(c, clock.date().isoformat(), "08:00", 2)["problems"][0]
     big = check_availability(c, tomorrow, "12:00", 12)
-    assert not big["available"] and big["instruction"] == "Call escalate_to_human for this group."
+    assert not big["available"] and "request_approval" in big["instruction"]
 
     booked = book_table(c, "Liam", "0412 345 678", 4, tomorrow, "12:00", "high chair")
     assert booked["status"] == "BOOKED" and booked["party_size"] == 4

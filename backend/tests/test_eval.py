@@ -1,7 +1,7 @@
 import re
 
 import eval as harness
-from app.db import Booking, Order
+from app.db import APPROVAL_KINDS, Booking, Order
 from app.tools import FUNCTIONS
 
 
@@ -12,7 +12,8 @@ def test_eval_cases_are_well_formed():
     for c in cases:
         then = c.get("then", {})
         assert set(c) <= harness.CASE_KEYS and set(then) <= harness.THEN_KEYS and c["turns"], c["name"]
-        assert all(n in FUNCTIONS for n in then.get("called", [])), c["name"]
+        assert all(n in FUNCTIONS for n in then.get("called", []) + then.get("called_any", [])), c["name"]
+        assert all(k in APPROVAL_KINDS for k in then.get("approvals", [])), c["name"]
         assert all(hasattr(Order, f) for f in then.get("order", {})), c["name"]
         assert all(f == "time" or hasattr(Booking, f) for f in then.get("booking", {})), c["name"]
         assert all(hasattr(Order, f) for f in c.get("setup_order", {})) and all(hasattr(Booking, f) for f in c.get("setup_booking", {})), c["name"]

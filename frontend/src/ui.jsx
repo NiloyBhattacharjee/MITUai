@@ -36,6 +36,7 @@ const ICONS = {
   menu: 'M17 8h1a4 4 0 1 1 0 8h-1M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4zM6 2v2M10 2v2M14 2v2',
   bell: 'M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0',
   pause: 'M10 4H6v16h4zM18 4h-4v16h4z',
+  approvals: 'M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4 12 14.01l-3-3',
   users: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75',
 }
 export const Icon = ({ name, className = 'w-[18px] h-[18px]' }) => (
@@ -48,6 +49,7 @@ export const STATUS_STYLE = {
   new: 'bg-info/10 text-info', preparing: 'bg-warn/10 text-warn', ready: 'bg-violet/10 text-violet',
   completed: 'bg-ok/10 text-ok', cancelled: 'bg-danger/10 text-danger',
   booked: 'bg-info/10 text-info', arrived: 'bg-ok/10 text-ok', no_show: 'bg-danger/10 text-danger',
+  pending: 'bg-warn/10 text-warn', approved: 'bg-ok/10 text-ok', declined: 'bg-danger/10 text-danger',
 }
 export const statusLabel = (s) => s[0].toUpperCase() + s.slice(1).replace('_', '-')
 export const StatusBadge = ({ status }) => <span className={cx('chip', STATUS_STYLE[status])}>{statusLabel(status)}</span>

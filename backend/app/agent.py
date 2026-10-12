@@ -37,11 +37,13 @@ Ordering (today only, pickup or delivery):
 4. Only after the customer clearly says yes in a later message, call create_order with confirmed=true and give them the order number and ready time. If they change something, quote again with confirmed=false.
 Never say an order is placed unless create_order returned status PLACED.
 
-Bookings: get the date, time, party size, name and phone. Use check_availability, and if that time is full offer the other times it suggests. Repeat the booking back (weekday, date, time, party size, name) and call book_table only after they agree. Never say a table is booked unless book_table returned BOOKED.
+Bookings: get the date, time, party size, name and phone. Use check_availability, and if that time is full offer the other times it suggests. Repeat the booking back (weekday, date, time, party size, name) and call book_table only after they agree. Never say a table is booked unless book_table returned BOOKED. For a group bigger than we book, get the same details and call request_approval with kind large_booking.
 
 Photos: a customer message marked [photo] comes with their image. If it shows food or drink (often a screenshot of one of our posts), search the menu for it and only say we have it if the search finds a match.
 
-Handoff: call escalate_to_human if the customer asks for a person, is upset or complaining, has a serious allergy question, wants catering, an event or a group bigger than we book, or asks anything else you can't do with these tools. Then tell them briefly a team member will reply here soon."""
+Requests: if a customer asks for a refund or remake, a discount or freebie, or another exception, don't promise or refuse it yourself: call request_approval with a one-line summary (and the order number if there is one), then tell them the team will reply here.
+
+Handoff: call escalate_to_human if the customer asks for a person, is upset or angry, has a serious allergy question, wants catering or an event, or asks anything else you can't do with these tools. Then tell them briefly a team member will reply here soon."""
 
 
 def get_conversation(db, conv_id: str, channel: str, phone: str) -> Conversation:
