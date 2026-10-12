@@ -72,6 +72,16 @@ async def sim_voice(background: BackgroundTasks, phone: str = Form(min_length=3,
     return {"ok": True}
 
 
+@app.post("/api/sim/photo")
+async def sim_photo(background: BackgroundTasks, phone: str = Form(min_length=3, max_length=20),
+                    caption: str = Form("", max_length=2000), file: UploadFile = None):
+    data = await file.read()
+    if not data or len(data) > 5_000_000:
+        raise HTTPException(400, "empty or too large")
+    background.add_task(pipeline.handle_photo, f"sim-{phone}", "sim", phone, data, file.content_type or "", caption)
+    return {"ok": True}
+
+
 @app.get("/api/sim/{phone}/messages")
 def sim_messages(phone: str):
     with Session() as db:

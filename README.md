@@ -1,8 +1,8 @@
 # Mitu: bilingual AI customer service agent for WhatsApp (tech demo)
 
-Mitu answers customers of **Shuta Fashion**, a demo Dhaka clothing shop. It replies in Bangla, English or Banglish (whatever the customer used), answers product, delivery and policy questions, takes orders, checks order status, understands voice notes, and hands off to a human when needed.
+Mitu answers customers of **Shuta Fashion**, a demo Dhaka clothing shop. It replies in Bangla, English or Banglish (whatever the customer used), answers product, delivery and policy questions, takes orders, checks order status, understands voice notes and photos (product screenshots, bKash receipts), and hands off to a human when needed.
 
-- **Chat simulator** (`#/simulator`): a WhatsApp-style phone screen in the browser, with a hold-to-record mic.
+- **Chat simulator** (`#/simulator`): a WhatsApp-style phone screen in the browser, with a hold-to-record mic and a photo button.
 - **Real WhatsApp**: through the official WhatsApp Cloud API webhook.
 - **Dashboard** (home page, password login): sales analytics (revenue per day, top products, payment and delivery mix, order status, AI-handled share, each compared with the previous period), live chats with human replies and a bot on/off switch per chat, and orders.
 
@@ -122,7 +122,7 @@ The flow: WhatsApp `audio` message → `GET /{media_id}` → download with the t
 Simplest options picked where the brief was open:
 
 - **Order confirmation is enforced in code, not just the prompt.** `create_order(confirmed=false)` validates and quotes, and stores the quote on the chat. `confirmed=true` only works if that quote was made in an *earlier* turn, so the customer must have sent a message after seeing the summary. Whether that message means "yes" is the LLM's call.
-- **History is text only.** Each turn's tool calls stay inside that turn, and the model re-looks things up next turn (the prompt tells it to). The last 30 messages are sent.
+- **History is text only**, except the customer's own photos (JPG/PNG), which are re-sent as images every turn (prompt caching makes the repeats cheap). Each turn's tool calls stay inside that turn, and the model re-looks things up next turn (the prompt tells it to). The last 30 messages are sent. Photos need a vision model, so with Ollama use one like `qwen2.5vl`.
 - **Stock is per product**, not per size or colour, to match the brief's single stock count. Cancelling an order does not return stock.
 - **Language label** in the dashboard comes from a cheap heuristic (Bangla script, or common Banglish words). The LLM mirrors the customer's language on its own.
 - **Handoff** sets `needs_human` and switches the bot off for that chat. Turning the bot back on in the dashboard clears the flag. If the LLM call fails, the customer gets a polite fixed message and the chat is flagged.

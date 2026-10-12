@@ -104,3 +104,11 @@ def test_messenger_photo_sent_by_public_url(db, fake_llm, graph):
     sent = [json.loads(r.content)["message"] for r in graph if r.url.path.endswith("/me/messages")]
     assert sent[0] == {"attachment": {"type": "image", "payload": {"url": "https://shop.test/media/products/P01.jpg", "is_reusable": True}}}
     assert sent[1]["text"].startswith("Black Cotton Panjabi") and sent[2] == {"text": "Eita dekhen"}
+
+
+def test_customer_photo_reaches_the_llm_as_an_image(db, fake_llm, graph):
+    msg = {"from": "8801712345678", "id": "wamid.photo", "type": "image", "image": {"id": "photo-1", "caption": "eta ache?"}}
+    assert post_signed({"entry": [{"changes": [{"value": {"messages": [msg]}}]}]}).status_code == 200
+    turn = fake_llm.calls[-1][-1]
+    assert turn["text"] == "[photo] eta ache?" and turn["images"] == [{"mime": "image/jpeg", "data": b"OGGDATA"}]
+    assert db.scalar(select(Message).where(Message.role == "user")).audio_path.endswith(".jpg")

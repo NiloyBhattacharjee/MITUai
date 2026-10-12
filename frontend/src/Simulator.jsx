@@ -107,6 +107,18 @@ export default function Simulator() {
     if (recorder.current?.state === 'recording') recorder.current.stop()
     recorder.current = null
   }
+  const sendPhoto = async (e) => {
+    const file = e.target.files[0]
+    e.target.value = ''
+    if (!file) return
+    const form = new FormData()
+    form.append('phone', started)
+    form.append('caption', text)
+    form.append('file', file)
+    setText('')
+    setStatus('Sending photo…')
+    await api('/api/sim/photo', { method: 'POST', body: form }).catch(() => setStatus('Photo must be a JPG or PNG under 5 MB'))
+  }
   const restart = () => { setStarted(null); setData({ messages: [], bot_enabled: true }); setStatus('') }
 
   return (
@@ -174,6 +186,11 @@ export default function Simulator() {
                 <div ref={bottom} />
               </div>
               <form className="flex items-center gap-2 p-2 pb-4 bg-[#f0f2f5]" onSubmit={(e) => { e.preventDefault(); send(text) }}>
+                <label title="Send a photo (the message box text becomes its caption)"
+                  className="w-9 h-11 shrink-0 grid place-items-center text-zinc-500 hover:text-[#008069] cursor-pointer transition">
+                  <Icon name="image" />
+                  <input type="file" accept="image/jpeg,image/png" onChange={sendPhoto} className="sr-only" aria-label="Send a photo" />
+                </label>
                 <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Message" aria-label="Message"
                   className="flex-1 min-w-0 rounded-full px-4 py-2.5 bg-white outline-none text-sm text-zinc-900 placeholder:text-zinc-400" />
                 {text

@@ -24,7 +24,7 @@ return_policy: >-
 # Fixed replies that bypass the LLM (bilingual on purpose: we may not know the language yet).
 messages:
   handoff: "ঠিক আছে, আমাদের টিমের একজন শিগগিরই এখানে উত্তর দেবেন। (A team member will reply here shortly.)"
-  unsupported_media: "দুঃখিত, আমি এখন শুধু টেক্সট আর ভয়েস মেসেজ বুঝতে পারি। চাইলে লিখে পাঠান, অথবা আমাদের টিমের কারো সাথে কথা বলতে চাইলে বলুন। (Sorry, I can only read text and voice notes for now — type your question, or ask for a human.)"
+  unsupported_media: "দুঃখিত, আমি এখন শুধু টেক্সট, ভয়েস মেসেজ আর ছবি (JPG/PNG) বুঝতে পারি। চাইলে লিখে পাঠান, অথবা আমাদের টিমের কারো সাথে কথা বলতে চাইলে বলুন। (Sorry, I can only read text, voice notes and photos for now — type your question, or ask for a human.)"
   voice_unclear: "দুঃখিত, ভয়েস মেসেজটা পরিষ্কার বুঝতে পারিনি। আরেকবার বলবেন, নাকি লিখে পাঠাবেন? (Sorry, I couldn't catch that voice note — could you say it again or type it?)"
   voice_too_long: "ভয়েস মেসেজটা একটু বড় হয়ে গেছে। ২ মিনিটের ছোট মেসেজ বা লিখে পাঠালে ভালো হয়। (That voice note is a bit long — please send one under 2 minutes, or type it.)"
   error: "দুঃখিত, একটু সমস্যা হচ্ছে। আমাদের টিমের একজন শিগগিরই উত্তর দেবেন। (Sorry, something went wrong — a team member will reply soon.)"
