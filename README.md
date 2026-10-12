@@ -4,7 +4,7 @@ Mitu answers customers of **Shuta Fashion**, a demo Dhaka clothing shop. It repl
 
 - **Chat simulator** (`#/simulator`, signed-in staff only, since every message runs the paid LLM): a WhatsApp-style phone screen in the browser, with a hold-to-record mic and a photo button.
 - **Real WhatsApp**: through the official WhatsApp Cloud API webhook.
-- **Dashboard** (home page, password login): sales analytics (revenue per day, top products, payment and delivery mix, order status, AI-handled share, each compared with the previous period), live chats with human replies and a bot on/off switch per chat, and orders.
+- **Dashboard** (home page, password login): sales analytics (revenue per day, top products, payment and delivery mix, order status, AI-handled share, each compared with the previous period), live chats with human replies and a bot on/off switch per chat (under each customer message, "AI used …" opens the tools the AI called, what they returned, and what that turn cost), and orders.
 
 Both channels run the same code path: `pipeline.py` → `agent.respond()` → LLM with tools.
 

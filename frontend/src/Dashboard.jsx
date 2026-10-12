@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { api, toast, useLive } from './App.jsx'
 import { Bubble, time } from './Simulator.jsx'
 import { Drawer, Empty, Icon, PageHeader, STATUS_STYLE, Segmented, Skeleton, Switch, cx, taka } from './ui.jsx'
@@ -22,6 +22,27 @@ function Avatar({ c }) {
       {c.phone.slice(-2)}
       <span className={cx('absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full ring-2 ring-surface', channel(c).dot)} title={channel(c).label} />
     </div>
+  )
+}
+
+// What the AI did to answer one customer message. Full calls load on open: too big for every chat poll.
+function AiSteps({ m }) {
+  const [steps, setSteps] = useState(null)
+  const load = (e) => e.currentTarget.open && !steps && api(`/api/messages/${m.id}/steps`).then(setSteps).catch(() => {})
+  return (
+    <details onToggle={load} className="w-fit max-w-[80%] ml-auto text-[11px] text-faint">
+      <summary className="cursor-pointer select-none text-right hover:text-muted">
+        {m.ai.tools.length ? `AI used ${m.ai.tools.join(', ')}` : 'AI answered without tools'}
+        {m.ai.cost_usd != null && ` · $${m.ai.cost_usd.toFixed(4)}`}
+      </summary>
+      {steps?.map((s, i) => (
+        <div key={i} className="mt-1.5 rounded-lg border border-line bg-surface p-2">
+          <div className="font-medium text-muted">{s.name} <span className="font-normal text-faint">{s.ms} ms</span></div>
+          <pre className="mt-1 whitespace-pre-wrap break-all font-mono">{JSON.stringify(s.args)}</pre>
+          <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono">→ {JSON.stringify(s.result, null, 1)}</pre>
+        </div>
+      ))}
+    </details>
   )
 }
 
@@ -138,7 +159,7 @@ export function Chats() {
               <Switch checked={conv.bot_enabled} onChange={toggleBot} label={<span className="hidden sm:inline">AI replies</span>} />
             </div>
             <div ref={box} className="flex-1 overflow-y-auto px-4 py-5 space-y-2.5">
-              {msgs?.map((m) => <Bubble key={m.id} m={m} mine={m.role !== 'user'} />)}
+              {msgs?.map((m) => <Fragment key={m.id}><Bubble m={m} mine={m.role !== 'user'} />{m.ai && <AiSteps m={m} />}</Fragment>)}
               {typing && (
                 <div className="enter flex justify-end" aria-label="AI assistant is typing">
                   <div className="flex gap-1 rounded-2xl rounded-br-md bg-brand-soft px-3.5 py-3">

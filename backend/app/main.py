@@ -17,7 +17,7 @@ from sqlalchemy import func, select
 
 from . import agent, messenger, pipeline, tools, whatsapp
 from .config import ADMIN_PASSWORD, BUSINESS, MEDIA_DIR, STAFF
-from .db import ORDER_STATUSES, Conversation, LlmUsage, Message, Order, Product, Session, Variant, init_db
+from .db import ORDER_STATUSES, Conversation, LlmUsage, Message, Order, Product, Session, ToolCall, Variant, init_db
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 init_db()
@@ -145,8 +145,27 @@ def conversations():
 
 @app.get("/api/conversations/{conv_id}/messages", dependencies=[dash])
 def conversation_messages(conv_id: str):
+    """Each customer message the AI answered gets "ai": the tools it used and what that turn cost."""
     with Session() as db:
-        return messages_of(db, conv_id)
+        msgs = messages_of(db, conv_id)
+        ids = [m["id"] for m in msgs if m["role"] == "user"]
+        used = {}
+        for message_id, name in db.execute(select(ToolCall.message_id, ToolCall.name).where(ToolCall.message_id.in_(ids)).order_by(ToolCall.id)):
+            used.setdefault(message_id, []).append(name)
+        cost = dict(db.execute(select(LlmUsage.message_id, func.sum(LlmUsage.cost_usd))
+                               .where(LlmUsage.message_id.in_(ids)).group_by(LlmUsage.message_id)).all())
+        for m in msgs:
+            if m["id"] in used or m["id"] in cost:
+                m["ai"] = {"tools": used.get(m["id"], []), "cost_usd": cost.get(m["id"])}
+        return msgs
+
+
+@app.get("/api/messages/{message_id}/steps", dependencies=[dash])
+def ai_steps(message_id: int):
+    """Full tool calls for one turn, fetched when staff open it (too big to send on every chat poll)."""
+    with Session() as db:
+        return [{"name": s.name, "args": s.args, "result": s.result, "ms": s.ms}
+                for s in db.scalars(select(ToolCall).where(ToolCall.message_id == message_id).order_by(ToolCall.id))]
 
 
 class Reply(BaseModel):

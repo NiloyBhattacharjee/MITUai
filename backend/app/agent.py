@@ -2,13 +2,14 @@ import logging
 import mimetypes
 import re
 import threading
+import time
 from collections import defaultdict
 
 from sqlalchemy import select
 
 from . import llm, notify, tools
 from .config import BUSINESS, MEDIA_DIR
-from .db import Conversation, LlmUsage, Message, Session, now
+from .db import Conversation, LlmUsage, Message, Session, ToolCall, now
 
 log = logging.getLogger(__name__)
 HISTORY_LIMIT = 30
@@ -112,17 +113,24 @@ def respond(conv_id: str, channel: str, phone: str, text: str, is_voice=False, a
         recent = db.scalars(select(Message).where(Message.conversation_id == conv_id)
                             .order_by(Message.id.desc()).limit(HISTORY_LIMIT)).all()
         ctx = tools.Ctx(db, conv, user_msg.id)
-        usage = []  # filled per API call, even if a later call fails
+        usage, steps = [], []  # filled per API call / tool call, even if a later one fails
+
+        def call_tool(name, args):
+            t = time.perf_counter()
+            result = tools.run_tool(ctx, name, args)
+            steps.append(ToolCall(message_id=user_msg.id, name=name, args=args, result=result, ms=round((time.perf_counter() - t) * 1000)))
+            return result
+
         try:
-            reply = llm.get_llm().run(system_prompt(first), build_history(recent[::-1]), tools.SPECS,
-                                      lambda name, args: tools.run_tool(ctx, name, args), usage)
+            reply = llm.get_llm().run(system_prompt(first), build_history(recent[::-1]), tools.SPECS, call_tool, usage)
         except Exception:
             log.exception("agent failed for %s", conv_id)
             notify.flag_for_human(db, conv, "Bot error, please check this chat")
             reply = BUSINESS["messages"]["error"]
+        db.add_all(steps)
+        db.add_all(LlmUsage(conversation_id=conv_id, message_id=user_msg.id, cost_usd=llm.cost_usd(u), **u) for u in usage)
+        db.commit()
         if usage:
-            db.add_all(LlmUsage(conversation_id=conv_id, cost_usd=llm.cost_usd(u), **u) for u in usage)
-            db.commit()
             log.info("AI turn for %s: %d calls, %d in / %d out tokens, $%.4f", conv_id, len(usage),
                      sum(u["input_tokens"] for u in usage), sum(u["output_tokens"] for u in usage),
                      sum(llm.cost_usd(u) or 0 for u in usage))
