@@ -1,0 +1,33 @@
+name: Task
+description: A change small enough for one pull request, written so a person or an agent can pick it up.
+body:
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: Who it's for and what goes wrong without it.
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What to build
+      description: The behaviour, and the files it probably touches.
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: Checks a reviewer can tick off. Include the test that should exist.
+      placeholder: |
+        - [ ] ...
+        - [ ] A test in backend/tests/... covers it
+        - [ ] pytest and npm run build pass
+    validations:
+      required: true
+  - type: textarea
+    id: out
+    attributes:
+      label: Not in this issue
+      description: What to leave alone, so the change stays small.

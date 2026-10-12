@@ -40,3 +40,10 @@ CI (`.github/workflows/ci-cd.yml`) runs exactly the first two. Run them before c
 - One branch per change, off `main`. Commit and push the branch to `origin` when done. Merge into `main` only when asked; never force-push.
 - Commit messages: imperative subject saying what changed for the café or developer, body only if the why isn't obvious.
 - Never skip hooks or commit with failing tests.
+
+## Issues and the GitHub agent
+
+- Work is tracked as GitHub issues with a "Done when" checklist. `agent-ready` means the issue is specific enough to
+  hand to an agent; adding the `claude` label (or commenting `@claude`) starts `.github/workflows/claude.yml` on it.
+- An issue is done when every "Done when" box holds and CI is green. Link the PR to the issue (`Closes #N`).
+- Found something out of scope while working? Open a new issue for it instead of growing the PR.
