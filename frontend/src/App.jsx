@@ -85,9 +85,10 @@ function ThemeButton({ className }) {
 
 const PAGES = [
   { id: 'overview', label: 'Overview', el: <Analytics /> },
-  { id: 'kitchen', label: 'Kitchen', el: <Kitchen /> },
-  { id: 'orders', label: 'Orders', el: <Orders /> },
-  { id: 'bookings', label: 'Bookings', el: <Bookings /> },
+  // needs: whether this business uses the page (from /api/business; shown until that loads)
+  { id: 'kitchen', label: 'Kitchen', el: <Kitchen />, needs: (s) => s.orders !== false },
+  { id: 'orders', label: 'Orders', el: <Orders />, needs: (s) => s.orders !== false },
+  { id: 'bookings', label: 'Bookings', el: <Bookings />, needs: (s) => s.tables !== false || s.appointments },
   { id: 'approvals', label: 'Approvals', short: 'Approve', el: <Approvals /> },
   { id: 'chats', label: 'Conversations', short: 'Chats', el: <Chats /> },
   { id: 'menu', label: 'Menu', el: <Menu /> },
@@ -157,7 +158,8 @@ function Shell({ page, shop }) {
   const [asks] = useLive('/api/approvals', 5000)
   const waiting = convs?.filter((c) => c.needs_human).length
   const counts = { chats: waiting, approvals: asks?.filter((a) => a.status === 'pending').length }
-  const current = PAGES.find((p) => p.id === page) || PAGES[0]
+  const pages = PAGES.filter((p) => !p.needs || p.needs(shop))
+  const current = pages.find((p) => p.id === page) || pages[0]
   const logout = () => { api('/api/logout', { method: 'POST' }).catch(() => {}).finally(() => dispatchEvent(new Event('logout'))) }
   const badge = (p) => counts[p.id] > 0 && (
     <span className="rounded-full bg-warn px-1.5 min-w-5 text-center text-[11px] font-semibold leading-5 text-surface"
@@ -168,7 +170,7 @@ function Shell({ page, shop }) {
       <aside className="hidden md:flex sticky top-0 h-dvh flex-col border-r border-line bg-surface px-3 py-5">
         <div className="px-3 mb-8"><Brand /></div>
         <nav className="flex-1 space-y-0.5">
-          {PAGES.map((p) => {
+          {pages.map((p) => {
             const active = current.id === p.id
             return (
               <a key={p.id} href={`#/${p.id}`} aria-current={active ? 'page' : undefined}
@@ -208,8 +210,9 @@ function Shell({ page, shop }) {
         <div key={current.id} className="enter max-w-6xl mx-auto">{current.el}</div>
       </main>
 
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-20 grid grid-cols-7 border-t border-line bg-surface/90 backdrop-blur-lg pb-[env(safe-area-inset-bottom)]">
-        {PAGES.map((p) => {
+      <nav style={{ gridTemplateColumns: `repeat(${pages.length}, minmax(0, 1fr))` }}
+        className="md:hidden fixed bottom-0 inset-x-0 z-20 grid border-t border-line bg-surface/90 backdrop-blur-lg pb-[env(safe-area-inset-bottom)]">
+        {pages.map((p) => {
           const active = current.id === p.id
           return (
             <a key={p.id} href={`#/${p.id}`} aria-current={active ? 'page' : undefined}

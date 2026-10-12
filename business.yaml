@@ -1,4 +1,4 @@
-# Everything about the business lives here. Swap this file to run a different café or restaurant.
+# Everything about the business lives here. Swap this file to run a different café or restaurant (examples/ has a salon and an online shop).
 name: Little Fern Café
 agent_name: Mitu
 # alert_email: owner@example.com   # who gets "needs a person" and approval emails (default: ALERT_EMAIL in .env)

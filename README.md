@@ -17,6 +17,7 @@ Every channel runs the same code path: `pipeline.py` → `agent.respond()` → L
 
 ```
 business.yaml          a café: hours, ordering, bookings, fixed messages, menu (each café on the install has its own)
+examples/              other kinds of business: a salon (appointments) and an online shop (stock, cash on delivery, bKash)
 backend/
   app/config.py        .env, money helpers
   app/tenancy.py       which café a request or message belongs to; every query on a café's data is filtered to it
@@ -143,6 +144,22 @@ cd backend
 
 All cafés share one Meta app (`WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`) and the same webhook URLs. Each WhatsApp message is routed to the café whose number it was sent to (`phone_number_id`), and each Messenger or Instagram message to the café whose Page or account received it. With a single café on the install, everything goes to it, so the ids are optional. To put your customers' own numbers on your Meta app, Meta requires you to join its Tech Provider program and use Embedded Signup; until then, each café can use a number on your own Meta business account.
 
+### Other kinds of business
+
+What a business does follows from the sections in its settings file, and the assistant, its tools and the dashboard's pages follow from that:
+
+| Section | Turns on |
+|---|---|
+| `fulfilment` + `payment_methods` | orders (pickup, delivery zones, any payment methods, e.g. cash on delivery and bKash) and the Kitchen and Orders pages |
+| `reservations` | table bookings |
+| `appointments` | services by appointment with named staff (`providers`), for items that have `minutes` |
+
+On items, `stock: 12` makes the assistant count them down (it never sells more than are left, and a cancelled order puts them back), and `orders_days_ahead: 7` lets customers order for a later day. `kind: a hair and beauty salon` is how the assistant describes the business. Two working examples: `examples/salon.yaml` and `examples/online-shop.yaml`.
+
+```bash
+.venv/bin/python manage.py add-shop bloom ../examples/salon.yaml --owner-password 'a-long-password'
+```
+
 ## 5. CI/CD and deploying
 
 `.github/workflows/ci-cd.yml` runs on every push and pull request:
@@ -181,11 +198,12 @@ The flow: WhatsApp `audio` message → `GET /{media_id}` → download with the t
 Simplest options picked where the brief was open:
 
 - **Order confirmation is enforced in code, not just the prompt.** `create_order(confirmed=false)` checks everything and quotes, and stores the quote on the chat. `confirmed=true` only works if that quote was made in an *earlier* turn, so the customer must have sent a message after seeing the summary. Whether that message means "yes" is the LLM's call. Confirming checks everything again (sold out since? kitchen closed? orders paused?), and if the price changed it shows the new total and asks again.
-- **Orders are for today only**, for "as soon as possible" (now plus `prep_minutes`) or a time today inside opening hours. Pre-orders for another day would need a kitchen schedule; add them when a café asks.
+- **Orders are for today only** by default, for "as soon as possible" (now plus `prep_minutes`) or a time today inside opening hours. A shop that ships sets `orders_days_ahead`; the time must still be inside its hours that day. There's no capacity per day: add one when a business gets more orders than it can make.
 - **Bookings are one step** (the prompt makes the assistant repeat the details and wait for a yes): a wrong booking is cheap to cancel, unlike a wrong food order. Capacity is a seat count: every booking within one sitting of the new one counts against it. That over-counts slightly; a table plan would be exact.
 - **Approvals vs handoff:** a request with a clear yes/no (refund, discount, big group) goes to the Approvals queue and the assistant keeps chatting; an upset customer, a serious allergy question or catering goes to a person and the assistant steps back. Two staff can't both answer one request: the decision is a conditional update.
 - **One reminder** per unanswered order summary, checked every minute by the backend and sent only inside the messaging window. It's marked before sending, so a failed send never becomes a second nudge.
-- **Sold out is a switch, not stock counts.** Cafés run out of things during the day; nobody counts croissants into a system.
+- **Sold out is a switch; stock counts are optional.** Cafés run out of things during the day and nobody counts croissants into a system, so items without `stock` just have the switch. A shop sets `stock`: placing an order counts it down with a conditional update (two customers can't both buy the last one), and cancelling, by the customer or on the dashboard, puts it back.
+- **Appointments are bookings with a service and a person.** A service is a menu item with `minutes`, so search, photos, prices and the dashboard's Menu page all work for it. The assistant offers the start times when someone who does that service is free for its whole length inside opening hours, and books the first free person unless the customer asked for one. Everyone works the business's hours; per-person hours and days off aren't built yet.
 - **Allergens:** the assistant only repeats the tags on each item plus the café's allergen note, never says a dish is safe, and hands serious allergy questions to a person.
 - **Time:** each customer message in the history starts with its local send time (`[Sat 12 Oct 2026 13:05]`), so "tomorrow" and "in 20 minutes" work. It's part of the stored message, so the cached prompt prefix doesn't change from turn to turn.
 - **Money** is stored in cents and shown with `currency` from `business.yaml`.

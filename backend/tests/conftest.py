@@ -24,10 +24,10 @@ STAFF = {"Owner": "pw", "Rina": "rina-pw", "Karim": "karim-pw"}
 CHANNELS = dict(whatsapp_phone_number_id="123", whatsapp_token="tok", page_id="page-1", instagram_id="ig-1", page_token="page-tok")
 
 
-def add_cafe(db, shop_id: str, staff: dict[str, str], **channels):
-    """A café from business.yaml whose staff are signed in: each one's session token is their password, so tests send
-    {"X-Session": "pw"} for the owner (logging in itself is tested separately)."""
-    shop = shops.create(db, shop_id, shops.read(BUSINESS_FILE), staff, **channels)
+def add_cafe(db, shop_id: str, staff: dict[str, str], business=BUSINESS_FILE, **channels):
+    """A café from business.yaml (or another business file) whose staff are signed in: each one's session token is
+    their password, so tests send {"X-Session": "pw"} for the owner (logging in itself is tested separately)."""
+    shop = shops.create(db, shop_id, shops.read(business), staff, **channels)
     for person in db.query(Staff).filter(Staff.shop_id == shop_id):
         db.add(LoginSession(token_hash=hashlib.sha256(staff[person.name].encode()).hexdigest(), staff_id=person.id))
     db.commit()

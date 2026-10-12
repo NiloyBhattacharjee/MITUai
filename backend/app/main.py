@@ -135,7 +135,9 @@ def me(who: str = dash):
 @app.get("/api/business", dependencies=[dash])
 def business():
     c = cfg()
-    return {"id": tenancy.shop_id(), "name": c["name"], "agent_name": c["agent_name"], "currency": c.get("currency", "$")}
+    return {"id": tenancy.shop_id(), "name": c["name"], "agent_name": c["agent_name"], "currency": c.get("currency", "$"),
+            # which dashboard pages apply: a salon has no kitchen, a shop no table bookings
+            "orders": tools.sells(), "tables": tools.tables(), "appointments": bool(tools.appts())}
 
 
 # --- simulator (signed in only: every message runs the paid LLM and can place real orders) ------
@@ -340,6 +342,9 @@ def set_order_status(order_id: int, body: Status):
     with Session() as db:
         o = _get(db, Order, order_id)
         old, o.status = o.status, body.status
+        if (old == "cancelled") != (body.status == "cancelled") and (short := tools.take_stock(db, o.items, back=body.status == "cancelled")):
+            db.rollback()
+            raise HTTPException(409, f"Not enough left to bring this order back: {', '.join(short)}")
         db.commit()
         note = None
         msgs = cfg()["messages"]
@@ -372,9 +377,13 @@ def put_settings(body: Settings):
 
 # --- bookings ------------------------------------------------------------------------------------
 
+APPOINTMENT_CANCELLED = "Your {service} appointment on {when} has been cancelled. Message us here if you have any questions."
+
+
 def booking_row(b: Booking) -> dict:
     return {"id": b.id, "customer_name": b.customer_name, "phone": b.phone, "party_size": b.party_size, "at": iso(b.at),
-            "notes": b.notes, "status": b.status, "conversation_id": b.conversation_id}
+            "notes": b.notes, "status": b.status, "conversation_id": b.conversation_id,
+            "service": b.service, "provider": b.provider, "minutes": b.minutes}
 
 
 @app.get("/api/bookings", dependencies=[dash])
@@ -396,7 +405,9 @@ def set_booking_status(booking_id: int, body: Status):
         db.commit()
         note = None
         if body.status == "cancelled" and old != "cancelled" and (conv := db.get(Conversation, b.conversation_id or "")):
-            text = cfg()["messages"]["booking_cancelled"].format(when=hours.label(hours.to_local(b.at)), party_size=b.party_size)
+            msgs = cfg()["messages"]
+            text = (msgs.get("appointment_cancelled", APPOINTMENT_CANCELLED) if b.service_id else msgs["booking_cancelled"]).format(
+                when=hours.label(hours.to_local(b.at)), party_size=b.party_size, service=b.service)
             note = pipeline.send_update(db, conv, text)
     return {"ok": True, "note": note}
 
@@ -458,7 +469,7 @@ def item_row(i: MenuItem) -> dict:
     photo = tools.item_photo(i.id)
     return {"id": i.id, "name": i.name, "category": i.category, "description": i.description, "price": i.price,
             "options": options.lines(i.options), "dietary": i.dietary, "allergens": i.allergens, "aliases": i.aliases,
-            "available": i.available,
+            "available": i.available, "stock": i.stock, "minutes": i.minutes,
             # ?v= so the browser shows a replaced photo
             "photo_url": f"/media/{photo.relative_to(MEDIA_DIR).as_posix()}?v={int(photo.stat().st_mtime)}" if photo else None}
 
@@ -483,9 +494,12 @@ class ItemFields(BaseModel):
     allergens: list[Tag] | None = None
     aliases: list[Tag] | None = None  # other names customers use; helps search
     available: bool | None = None
+    stock: int | None = Field(None, ge=0, le=1_000_000)  # how many are left; null = don't count
+    minutes: int | None = Field(None, ge=5, le=24 * 60)  # a service booked as an appointment; null = an item to order
 
     def apply(self, i: MenuItem):
         data = self.model_dump(exclude_none=True)
+        data |= {k: getattr(self, k) for k in ("stock", "minutes") if k in self.model_fields_set}  # null here clears it
         if "options" in data:
             try:
                 data["options"] = options.parse(data["options"])
