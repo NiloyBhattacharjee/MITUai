@@ -6,16 +6,17 @@ import re
 import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, time, timedelta, timezone
+from time import monotonic
 from typing import Annotated
 from zoneinfo import ZoneInfo
 
-from fastapi import BackgroundTasks, Depends, FastAPI, Form, Header, HTTPException, Query, Response, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, Form, Header, HTTPException, Query, Request, Response, UploadFile
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from sqlalchemy import func, select
 
 from . import agent, messenger, pipeline, tools, whatsapp
-from .config import BUSINESS, MEDIA_DIR, STAFF
+from .config import ADMIN_PASSWORD, BUSINESS, MEDIA_DIR, STAFF
 from .db import ORDER_STATUSES, Conversation, LlmUsage, Message, Order, Product, Session, Variant, init_db
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -48,20 +49,53 @@ def messages_of(db, conv_id: str) -> list[dict]:
     return [message_dict(m) for m in db.scalars(select(Message).where(Message.conversation_id == conv_id).order_by(Message.id))]
 
 
-# --- simulator (no auth: it's the "customer's phone") ----------------------------------------
+@app.get("/api/business")
+def business():
+    return {"name": BUSINESS["name"], "agent_name": BUSINESS["agent_name"]}
+
+
+# --- dashboard login ---------------------------------------------------------------------------
+
+if ADMIN_PASSWORD in ("", "admin", "change-me"):
+    raise RuntimeError("Set ADMIN_PASSWORD in .env to a real password before starting the server.")
+
+MAX_WRONG, LOCKOUT_SECONDS = 10, 15 * 60
+_wrong: dict[str, list[float]] = {}  # client IP -> times of recent wrong passwords
+# ponytail: in-memory, one process; it resets on restart, which only gives a guesser another 10 tries.
+
+
+def admin(request: Request, x_admin_password: str = Header("")) -> str:
+    """The signed-in person's name. Each owner/staff password is different, so the password says who it is.
+    10 wrong passwords from one IP lock that IP out for 15 minutes (per IP, so a guesser can't lock the owner out)."""
+    ip = request.client.host if request.client else "?"
+    recent = [t for t in _wrong.get(ip, []) if t > monotonic() - LOCKOUT_SECONDS]
+    if len(recent) >= MAX_WRONG:
+        raise HTTPException(429, "Too many wrong passwords. Try again in 15 minutes.")
+    who = [name for name, pw in STAFF.items() if hmac.compare_digest(x_admin_password.encode(), pw.encode())]
+    if not who:
+        if x_admin_password:  # a guess, not just a signed-out page loading
+            _wrong[ip] = recent + [monotonic()]
+        raise HTTPException(401, "wrong password")
+    return who[0]
+
+
+dash = Depends(admin)
+
+
+# --- simulator (signed in only: every message runs the paid LLM and can place real orders) ------
 
 class SimMessage(BaseModel):
     phone: str = Field(min_length=3, max_length=20)
     text: str = Field(min_length=1, max_length=2000)
 
 
-@app.post("/api/sim/message")
+@app.post("/api/sim/message", dependencies=[dash])
 def sim_message(body: SimMessage, background: BackgroundTasks):
     background.add_task(pipeline.handle_text, f"sim-{body.phone}", "sim", body.phone, body.text)
     return {"ok": True}
 
 
-@app.post("/api/sim/voice")
+@app.post("/api/sim/voice", dependencies=[dash])
 async def sim_voice(background: BackgroundTasks, phone: str = Form(min_length=3, max_length=20), file: UploadFile = None):
     data = await file.read()
     if not data or len(data) > 10_000_000:
@@ -72,7 +106,7 @@ async def sim_voice(background: BackgroundTasks, phone: str = Form(min_length=3,
     return {"ok": True}
 
 
-@app.post("/api/sim/photo")
+@app.post("/api/sim/photo", dependencies=[dash])
 async def sim_photo(background: BackgroundTasks, phone: str = Form(min_length=3, max_length=20),
                     caption: str = Form("", max_length=2000), file: UploadFile = None):
     data = await file.read()
@@ -82,29 +116,11 @@ async def sim_photo(background: BackgroundTasks, phone: str = Form(min_length=3,
     return {"ok": True}
 
 
-@app.get("/api/sim/{phone}/messages")
+@app.get("/api/sim/{phone}/messages", dependencies=[dash])
 def sim_messages(phone: str):
     with Session() as db:
         conv = db.get(Conversation, f"sim-{phone}")
         return {"messages": messages_of(db, f"sim-{phone}"), "bot_enabled": conv.bot_enabled if conv else True}
-
-
-@app.get("/api/business")
-def business():
-    return {"name": BUSINESS["name"], "agent_name": BUSINESS["agent_name"]}
-
-
-# --- dashboard (single admin password) ------------------------------------------------------
-
-def admin(x_admin_password: str = Header("")) -> str:
-    """The signed-in person's name. Each owner/staff password is different, so the password says who it is."""
-    who = [name for name, pw in STAFF.items() if hmac.compare_digest(x_admin_password.encode(), pw.encode())]
-    if not who:
-        raise HTTPException(401, "wrong password")
-    return who[0]
-
-
-dash = Depends(admin)
 
 
 @app.get("/api/me")

@@ -1,5 +1,6 @@
-# Local:  docker compose up --build
-# Server: CI sets IMAGE_PREFIX=ghcr.io/<owner>/<repo> and pulls the images it built (see .github/workflows/ci-cd.yml)
+# Local:  docker compose up --build, then open http://localhost
+# Server: CI sets IMAGE_PREFIX=ghcr.io/<owner>/<repo> and pulls the images it built (see .github/workflows/ci-cd.yml).
+#         Set SITE_ADDRESS=your.domain in .env and point the domain's DNS at the server: Caddy gets the HTTPS certificate.
 services:
   backend:
     build: ./backend
@@ -12,16 +13,34 @@ services:
     volumes:
       - ./business.yaml:/srv/business.yaml:ro
       - data:/data
-    ports: ["8000:8000"]
+    # no published port: only Caddy (the frontend service) reaches it
 
   frontend:
     build: ./frontend
     image: ${IMAGE_PREFIX:-mituai}-frontend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
-      BACKEND_URL: http://backend:8000
-    ports: ["5173:5173"]
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+      BACKEND_URL: backend:8000
+    ports: ["80:80", "443:443", "443:443/udp"]
+    volumes:
+      - caddy:/data  # HTTPS certificates; losing them means re-issuing, which Let's Encrypt rate-limits
+    depends_on: [backend]
+
+  backup:
+    build: ./backend
+    image: ${IMAGE_PREFIX:-mituai}-backend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: sqlite:////data/shop.db
+      MEDIA_DIR: /data/media
+      BACKUP_DIR: /backups
+    volumes:
+      - data:/data
+      - ./backups:/backups  # on the host: copy this folder off the server too
+    command: sh -c "while true; do python backup.py; sleep 86400; done"
     depends_on: [backend]
 
 volumes:
   data:
+  caddy:

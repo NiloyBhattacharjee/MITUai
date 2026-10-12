@@ -1,0 +1,15 @@
+# SITE_ADDRESS: your domain (shop.example.com) gets HTTPS automatically; the default :80 is plain HTTP for local use.
+{$SITE_ADDRESS::80} {
+	encode gzip
+
+	@backend path /api/* /media/* /webhook /messenger/webhook
+	handle @backend {
+		reverse_proxy {$BACKEND_URL:backend:8000}
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
