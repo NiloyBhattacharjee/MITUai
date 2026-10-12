@@ -3,7 +3,10 @@ import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 
 export const cx = (...classes) => classes.filter(Boolean).join(' ')
-export const taka = (n) => `৳${Math.round(n).toLocaleString('en-IN')}`
+// Amounts are whole cents. The currency symbol comes from business.yaml (App sets it once /api/business loads).
+let currency = '$'
+export const setCurrency = (symbol) => { currency = symbol }
+export const money = (cents) => `${currency}${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 export const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
 
 // Lucide-style 24px stroke icons.
@@ -28,6 +31,12 @@ const ICONS = {
   system: 'M4 3h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM8 21h8M12 17v4',
   check: 'M20 6 9 17l-5-5',
   bot: 'M12 8V4H8M4 12a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v4a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4zM9 13v2M15 13v2',
+  kitchen: 'M6 13.87A4 4 0 0 1 7.41 6a5.11 5.11 0 0 1 1.05-1.54 5 5 0 0 1 7.08 0A5.11 5.11 0 0 1 16.59 6 4 4 0 0 1 18 13.87V21H6zM6 17h12',
+  bookings: 'M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM16 2v4M8 2v4M3 10h18',
+  menu: 'M17 8h1a4 4 0 1 1 0 8h-1M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4zM6 2v2M10 2v2M14 2v2',
+  bell: 'M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0',
+  pause: 'M10 4H6v16h4zM18 4h-4v16h4z',
+  users: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75',
 }
 export const Icon = ({ name, className = 'w-[18px] h-[18px]' }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
@@ -36,10 +45,12 @@ export const Icon = ({ name, className = 'w-[18px] h-[18px]' }) => (
 )
 
 export const STATUS_STYLE = {
-  new: 'bg-info/10 text-info', confirmed: 'bg-violet/10 text-violet', shipped: 'bg-warn/10 text-warn',
-  delivered: 'bg-ok/10 text-ok', cancelled: 'bg-danger/10 text-danger',
+  new: 'bg-info/10 text-info', preparing: 'bg-warn/10 text-warn', ready: 'bg-violet/10 text-violet',
+  completed: 'bg-ok/10 text-ok', cancelled: 'bg-danger/10 text-danger',
+  booked: 'bg-info/10 text-info', arrived: 'bg-ok/10 text-ok', no_show: 'bg-danger/10 text-danger',
 }
-export const StatusBadge = ({ status }) => <span className={cx('chip capitalize', STATUS_STYLE[status])}>{status}</span>
+export const statusLabel = (s) => s[0].toUpperCase() + s.slice(1).replace('_', '-')
+export const StatusBadge = ({ status }) => <span className={cx('chip', STATUS_STYLE[status])}>{statusLabel(status)}</span>
 
 export const Card = ({ title, action, className, children }) => (
   <section className={cx('card p-5', className)}>

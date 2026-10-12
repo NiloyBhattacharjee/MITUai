@@ -17,28 +17,65 @@ def test_staff_sign_in_with_their_own_password_and_replies_are_signed(db):
 
     db.add(Conversation(id="sim-4", channel="sim", phone="4"))
     db.commit()
-    assert client.post("/api/conversations/sim-4/reply", json={"text": "Ami Rina, help korchi"},
+    assert client.post("/api/conversations/sim-4/reply", json={"text": "Hi, Rina here, happy to help"},
                        headers={"X-Admin-Password": "rina-pw"}).status_code == 200
     msgs = client.get("/api/conversations/sim-4/messages", headers={"X-Admin-Password": "pw"}).json()
     assert msgs[-1]["role"] == "human" and msgs[-1]["author"] == "Rina"
 
 
-def test_orders_export_opens_in_excel_with_bangla_and_no_formulas(db):
-    db.add(Order(customer_name="=HYPERLINK(\"http://evil\")", phone="01712345678", address="ধানমন্ডি, ঢাকা",
-                 delivery_area="inside_dhaka", payment_method="bkash", paid=True, payment_ref="9CD45XK2LM", status="shipped",
-                 items=[{"product_id": "P01", "name": "Black Cotton Panjabi", "size": "L", "colour": "Black", "quantity": 2, "unit_price": 1450}],
-                 subtotal=2900, delivery_charge=70, total=2970))
+def test_orders_export_opens_in_excel_with_accents_and_no_formulas(db):
+    from app.db import now
+    db.add(Order(customer_name="=HYPERLINK(\"http://evil\")", phone="0412345678", fulfilment="delivery", address="12 Rue Émile, Newtown",
+                 payment_method="in_person", status="completed", ready_at=now(), notes="Ring the bell",
+                 items=[{"item_id": "M01", "name": "Flat White", "quantity": 2, "options": ["Large", "Oat"], "notes": "extra hot", "unit_price": 660}],
+                 subtotal=1320, fee=600, total=1920))
     db.commit()
     assert client.get("/api/orders/export.csv").status_code == 401
     r = client.get("/api/orders/export.csv", headers={"X-Admin-Password": "pw"})
     assert r.headers["content-disposition"] == 'attachment; filename="orders.csv"'
-    assert r.content.startswith("﻿".encode())  # BOM: Excel reads UTF-8, Bangla shows
+    assert r.content.startswith("\ufeff".encode())  # BOM: Excel reads UTF-8, accents show
     rows = list(csv.reader(io.StringIO(r.content.decode("utf-8-sig"))))
-    assert rows[0][:3] == ["Order", "Date", "Customer"]
+    assert rows[0][:4] == ["Order", "Placed", "Ready for", "Customer"]
     row = dict(zip(rows[0], rows[1]))
     assert row["Customer"] == "'=HYPERLINK(\"http://evil\")"  # stays text, never runs
-    assert row["Address"] == "ধানমন্ডি, ঢাকা" and row["Items"] == "2x Black Cotton Panjabi (L, Black)"
-    assert (row["Total"], row["Paid"], row["TrxID"], row["Status"]) == ("2970", "yes", "9CD45XK2LM", "shipped")
+    assert row["Address"] == "12 Rue Émile, Newtown" and row["Items"] == "2× Flat White (Large, Oat) – extra hot"
+    assert (row["Subtotal"], row["Fee"], row["Total"], row["Status"]) == ("13.20", "6.00", "19.20", "completed")
+
+
+def test_kitchen_sees_active_orders_soonest_first_and_can_pause_orders(db):
+    from datetime import timedelta
+    from app.db import now
+    h = {"X-Admin-Password": "pw"}
+    for minutes, status in [(30, "new"), (10, "preparing"), (5, "completed"), (20, "ready")]:
+        db.add(Order(customer_name=status, phone="0412345678", fulfilment="pickup", payment_method="in_person", status=status,
+                     ready_at=now() + timedelta(minutes=minutes), items=[], subtotal=0, fee=0, total=0))
+    db.commit()
+    assert [o["customer_name"] for o in client.get("/api/orders?active=true", headers=h).json()] == ["preparing", "ready", "new"]
+
+    assert client.get("/api/settings", headers=h).json() == {"orders_paused": False}
+    assert client.put("/api/settings", json={"orders_paused": True}, headers=h).status_code == 200
+    assert client.get("/api/settings", headers=h).json() == {"orders_paused": True}
+    assert client.put("/api/settings", json={"orders_paused": True}).status_code == 401
+
+
+def test_staff_see_bookings_and_cancelling_tells_the_customer(db, clock):
+    from datetime import timedelta
+    from sqlalchemy import select
+    from app import hours
+    from app.db import Booking
+    h = {"X-Admin-Password": "pw"}
+    db.add(Conversation(id="sim-b", channel="sim", phone="b"))
+    soon, later = hours.to_utc(clock + timedelta(hours=2)), hours.to_utc(clock + timedelta(days=20))
+    db.add_all([Booking(conversation_id="sim-b", customer_name="Liam", phone="0412345678", party_size=4, at=soon),
+                Booking(customer_name="Far", phone="0412345678", party_size=2, at=later)])
+    db.commit()
+    rows = client.get("/api/bookings?days=14", headers=h).json()
+    assert [b["customer_name"] for b in rows] == ["Liam"]
+    r = client.patch(f"/api/bookings/{rows[0]['id']}", json={"status": "cancelled"}, headers=h).json()
+    assert r["note"] is None
+    last = db.scalars(select(Message).where(Message.conversation_id == "sim-b")).all()[-1].text
+    assert "booking for 4" in last and "12:00" in last
+    assert client.patch(f"/api/bookings/{rows[0]['id']}", json={"status": "gone"}, headers=h).status_code == 400
 
 
 def test_simulator_needs_login_and_guessing_locks_out(fake_llm):
@@ -57,12 +94,12 @@ def test_simulator_needs_login_and_guessing_locks_out(fake_llm):
 
 def test_staff_can_see_which_tools_the_ai_used(db, fake_llm):
     from app.agent import respond
-    fake_llm.turns = [lambda h, call: call("search_products", {"query": "kurti"}) and "We have kurtis"]
-    asked = respond("sim-9", "sim", "9", "kurti ache?")
+    fake_llm.turns = [lambda h, call: call("search_menu", {"query": "latte"}) and "We have lattes"]
+    asked = respond("sim-9", "sim", "9", "do you do lattes?")
     h = {"X-Admin-Password": "pw"}
     customer = next(m for m in client.get("/api/conversations/sim-9/messages", headers=h).json() if m["role"] == "user")
-    assert customer["ai"]["tools"] == ["search_products"]
+    assert customer["ai"]["tools"] == ["search_menu"]
     steps = client.get(f"/api/messages/{customer['id']}/steps", headers=h).json()
-    assert steps[0]["args"] == {"query": "kurti"} and steps[0]["result"]["results"][0]["id"] == "P04"
-    assert asked.text == "We have kurtis"
+    assert steps[0]["args"] == {"query": "latte"} and steps[0]["result"]["results"][0]["id"] == "M02"
+    assert asked.text == "We have lattes"
     assert client.get(f"/api/messages/{customer['id']}/steps").status_code == 401

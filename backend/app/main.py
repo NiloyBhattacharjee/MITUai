@@ -5,19 +5,19 @@ import logging
 import re
 import threading
 from contextlib import asynccontextmanager
-from datetime import datetime, time, timedelta, timezone
+from datetime import datetime, time, timedelta
 from time import monotonic
 from typing import Annotated
-from zoneinfo import ZoneInfo
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Form, Header, HTTPException, Query, Request, Response, UploadFile
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from sqlalchemy import func, select
 
-from . import agent, messenger, pipeline, tools, whatsapp
-from .config import ADMIN_PASSWORD, BUSINESS, MEDIA_DIR, STAFF
-from .db import ORDER_STATUSES, Conversation, LlmUsage, Message, Order, Product, Session, ToolCall, Variant, init_db
+from . import agent, hours, messenger, options, pipeline, tools, whatsapp
+from .config import ADMIN_PASSWORD, BUSINESS, CURRENCY, MEDIA_DIR, STAFF, cents
+from .db import (BOOKING_STATUSES, ORDER_STATUSES, Booking, Conversation, LlmUsage, MenuItem, Message, Order, Session, Setting,
+                 ToolCall, init_db)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 init_db()
@@ -51,7 +51,7 @@ def messages_of(db, conv_id: str) -> list[dict]:
 
 @app.get("/api/business")
 def business():
-    return {"name": BUSINESS["name"], "agent_name": BUSINESS["agent_name"]}
+    return {"name": BUSINESS["name"], "agent_name": BUSINESS["agent_name"], "currency": CURRENCY}
 
 
 # --- dashboard login ---------------------------------------------------------------------------
@@ -136,7 +136,7 @@ def conversations():
         last = {m.conversation_id: m for m in db.scalars(select(Message).where(Message.id.in_(last_ids)))}
         heard = dict(db.execute(select(Message.conversation_id, func.max(Message.created_at))
                                 .where(Message.role == "user").group_by(Message.conversation_id)).all())
-        return [{"id": c.id, "channel": c.channel, "phone": c.phone, "language": c.language,
+        return [{"id": c.id, "channel": c.channel, "phone": c.phone,
                  "bot_enabled": c.bot_enabled, "needs_human": c.needs_human, "handoff_reason": c.handoff_reason,
                  "window_open": pipeline.window_open(c.channel, heard.get(c.id)),
                  "updated_at": iso(c.updated_at), "last_message": message_dict(last[c.id]) if c.id in last else None}
@@ -206,14 +206,26 @@ def toggle_bot(conv_id: str, body: BotToggle):
     return {"ok": True}
 
 
+# --- orders and the kitchen --------------------------------------------------------------------
+
+ACTIVE = ["new", "preparing", "ready"]
+
+
+def order_row(o: Order) -> dict:
+    return {"id": o.id, "customer_name": o.customer_name, "phone": o.phone, "fulfilment": o.fulfilment,
+            "fulfilment_label": tools.FULFILMENT.get(o.fulfilment, {}).get("label", o.fulfilment), "address": o.address,
+            "ready_at": iso(o.ready_at), "items": [tools.line_text(line) for line in o.items], "notes": o.notes, "total": o.total,
+            "payment_method": o.payment_method, "status": o.status, "created_at": iso(o.created_at), "conversation_id": o.conversation_id}
+
+
 @app.get("/api/orders", dependencies=[dash])
-def orders():
+def orders(active: bool = False):
+    """All orders, newest first (the latest 500; the CSV export has every one), or with active=true what the
+    kitchen is working on, soonest first."""
+    q = (select(Order).where(Order.status.in_(ACTIVE)).order_by(Order.ready_at) if active
+         else select(Order).order_by(Order.created_at.desc()).limit(500))
     with Session() as db:
-        return [{"id": o.id, "customer_name": o.customer_name, "phone": o.phone, "address": o.address,
-                 "delivery_area": o.delivery_area, "payment_method": o.payment_method, "items": o.items,
-                 "total": o.total, "status": o.status, "paid": bool(o.paid), "payment_ref": o.payment_ref,
-                 "created_at": iso(o.created_at), "conversation_id": o.conversation_id}
-                for o in db.scalars(select(Order).order_by(Order.created_at.desc()))]
+        return [order_row(o) for o in db.scalars(q)]
 
 
 def _cell(value) -> str:
@@ -224,180 +236,198 @@ def _cell(value) -> str:
 
 @app.get("/api/orders/export.csv", dependencies=[dash])
 def export_orders():
-    tz = ZoneInfo(BUSINESS.get("timezone", "Asia/Dhaka"))
     out = io.StringIO()
     w = csv.writer(out)
-    w.writerow(["Order", "Date", "Customer", "Phone", "Address", "Delivery area", "Items", "Subtotal", "Delivery charge",
-                "Total", "Payment", "Paid", "TrxID", "Status"])
+    w.writerow(["Order", "Placed", "Ready for", "Customer", "Phone", "Pickup/delivery", "Address", "Items", "Notes",
+                "Subtotal", "Fee", "Total", "Payment", "Status"])
+    amount = lambda c: f"{c / 100:.2f}"  # noqa: E731
     with Session() as db:
         for o in db.scalars(select(Order).order_by(Order.id)):
-            items = "; ".join(f"{l['quantity']}x {l['name']} ({l['size']}, {l['colour']})" for l in o.items)
-            w.writerow([o.id, o.created_at.replace(tzinfo=timezone.utc).astimezone(tz).strftime("%Y-%m-%d %H:%M"),
-                        _cell(o.customer_name), o.phone, _cell(o.address), o.delivery_area, _cell(items), o.subtotal,
-                        o.delivery_charge, o.total, o.payment_method,
-                        "" if o.payment_method == "cod" else ("yes" if o.paid else "no"), _cell(o.payment_ref or ""), o.status])
-    # The BOM makes Excel read the file as UTF-8, so Bangla names show correctly.
-    return Response("\ufeff" + out.getvalue(), media_type="text/csv; charset=utf-8",
+            w.writerow([o.id, f"{hours.to_local(o.created_at):%Y-%m-%d %H:%M}", f"{hours.to_local(o.ready_at):%Y-%m-%d %H:%M}",
+                        _cell(o.customer_name), o.phone, o.fulfilment, _cell(o.address or ""),
+                        _cell("; ".join(tools.line_text(line) for line in o.items)), _cell(o.notes or ""),
+                        amount(o.subtotal), amount(o.fee), amount(o.total), o.payment_method, o.status])
+    # The BOM makes Excel read the file as UTF-8, so names with accents show correctly.
+    return Response("﻿" + out.getvalue(), media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": 'attachment; filename="orders.csv"'})
 
 
-class OrderStatus(BaseModel):
+class Status(BaseModel):
     status: str
 
 
 @app.patch("/api/orders/{order_id}", dependencies=[dash])
-def set_order_status(order_id: int, body: OrderStatus):
+def set_order_status(order_id: int, body: Status):
+    """The customer is told when it's being made, ready (or on its way) and cancelled."""
     if body.status not in ORDER_STATUSES:
         raise HTTPException(400, f"status must be one of {ORDER_STATUSES}")
     with Session() as db:
         o = _get(db, Order, order_id)
-        old = o.status
-        if body.status == "cancelled" and old != "cancelled":
-            tools.release_stock(db, o.items)
-        elif old == "cancelled" and body.status != "cancelled" and (short := tools.reserve_stock(db, o.items)):
-            raise HTTPException(409, f"{short} is out of stock, so order #{order_id} can't be reopened.")
-        o.status = body.status
+        old, o.status = o.status, body.status
         db.commit()
         note = None
-        text = BUSINESS["messages"].get(f"order_{body.status}")
+        msgs = BUSINESS["messages"]
+        text = msgs.get(f"order_{body.status}_{o.fulfilment}") or msgs.get(f"order_{body.status}")
         if body.status != old and text and (conv := db.get(Conversation, o.conversation_id or "")):
             note = pipeline.send_update(db, conv, text.format(order_id=o.id))
     return {"ok": True, "note": note}
 
 
-class Paid(BaseModel):
-    paid: bool
+class Settings(BaseModel):
+    orders_paused: bool
 
 
-@app.post("/api/orders/{order_id}/paid", dependencies=[dash])
-def set_paid(order_id: int, body: Paid):
+@app.get("/api/settings", dependencies=[dash])
+def get_settings():
     with Session() as db:
-        o = _get(db, Order, order_id)
-        if o.payment_method not in ("bkash", "nagad"):
-            raise HTTPException(400, "Only bKash and Nagad orders are paid in advance.")
-        newly_paid = body.paid and not o.paid
-        o.paid = body.paid
+        return {"orders_paused": tools.orders_paused(db)}
+
+
+@app.put("/api/settings", dependencies=[dash])
+def put_settings(body: Settings):
+    """orders_paused: the assistant stops taking orders (bookings and questions carry on)."""
+    with Session() as db:
+        db.merge(Setting(key="orders_paused", value=body.orders_paused))
+        db.commit()
+    return body
+
+
+# --- bookings ------------------------------------------------------------------------------------
+
+def booking_row(b: Booking) -> dict:
+    return {"id": b.id, "customer_name": b.customer_name, "phone": b.phone, "party_size": b.party_size, "at": iso(b.at),
+            "notes": b.notes, "status": b.status, "conversation_id": b.conversation_id}
+
+
+@app.get("/api/bookings", dependencies=[dash])
+def bookings(days: int = Query(14, ge=1, le=90)):
+    """Bookings from the start of today (café time) for the next `days` days."""
+    start = hours.to_utc(datetime.combine(hours.local_now().date(), time()))
+    with Session() as db:
+        rows = db.scalars(select(Booking).where(Booking.at >= start, Booking.at < start + timedelta(days=days)).order_by(Booking.at))
+        return [booking_row(b) for b in rows]
+
+
+@app.patch("/api/bookings/{booking_id}", dependencies=[dash])
+def set_booking_status(booking_id: int, body: Status):
+    if body.status not in BOOKING_STATUSES:
+        raise HTTPException(400, f"status must be one of {BOOKING_STATUSES}")
+    with Session() as db:
+        b = _get(db, Booking, booking_id)
+        old, b.status = b.status, body.status
         db.commit()
         note = None
-        if newly_paid and (conv := db.get(Conversation, o.conversation_id or "")):
-            note = pipeline.send_update(db, conv, BUSINESS["messages"]["payment_received"].format(order_id=o.id))
+        if body.status == "cancelled" and old != "cancelled" and (conv := db.get(Conversation, b.conversation_id or "")):
+            text = BUSINESS["messages"]["booking_cancelled"].format(when=hours.label(hours.to_local(b.at)), party_size=b.party_size)
+            note = pipeline.send_update(db, conv, text)
     return {"ok": True, "note": note}
 
 
-# --- products ------------------------------------------------------------------------------
+# --- menu ----------------------------------------------------------------------------------------
 
-def product_row(p: Product) -> dict:
-    photo = tools.product_photo(p.id)
-    return {**tools.product_dict(p), "category": p.category, "aliases": p.aliases,
-            "variants": [{"size": v.size, "colour": v.colour, "stock": v.stock} for v in p.variants],
+def item_row(i: MenuItem) -> dict:
+    photo = tools.item_photo(i.id)
+    return {"id": i.id, "name": i.name, "category": i.category, "description": i.description, "price": i.price,
+            "options": options.lines(i.options), "dietary": i.dietary, "allergens": i.allergens, "aliases": i.aliases,
+            "available": i.available,
             # ?v= so the browser shows a replaced photo
-            "photo_url": f"/media/products/{photo.name}?v={int(photo.stat().st_mtime)}" if photo else None}
+            "photo_url": f"/media/menu/{photo.name}?v={int(photo.stat().st_mtime)}" if photo else None}
 
 
-@app.get("/api/products", dependencies=[dash])
-def products():
+@app.get("/api/menu", dependencies=[dash])
+def menu():
     with Session() as db:
-        return [product_row(p) for p in db.scalars(select(Product).order_by(Product.id))]
+        return [item_row(i) for i in db.scalars(select(MenuItem).order_by(MenuItem.id))]
 
 
-Size = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=30)]
-Colour = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)]
+Tag = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)]
 
 
-class ProductFields(BaseModel):
+class ItemFields(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
-    name_en: str | None = Field(None, min_length=1, max_length=200)
-    name_bn: str | None = Field(None, max_length=200)
+    name: str | None = Field(None, min_length=1, max_length=200)
     category: str | None = Field(None, min_length=1, max_length=50)
-    price: int | None = Field(None, gt=0, le=1_000_000)
-    sizes: list[Size] | None = Field(None, min_length=1)
-    colours: list[Colour] | None = Field(None, min_length=1)
-    aliases: list[str] | None = None  # other names customers type (Banglish, misspellings); helps search
+    description: str | None = Field(None, max_length=1000)
+    price: float | None = Field(None, gt=0, le=100_000)  # an amount like 4.50
+    options: list[str] | None = None  # one line per group, see options.py
+    dietary: list[Tag] | None = None
+    allergens: list[Tag] | None = None
+    aliases: list[Tag] | None = None  # other names customers use; helps search
+    available: bool | None = None
 
-    def apply(self, p: Product):
-        data = {k: v for k, v in self.model_dump(exclude_none=True).items() if k in ProductFields.model_fields}
-        for k in ("sizes", "colours"):
-            if k in data:
-                data[k] = list(dict.fromkeys(data[k]))  # drop repeats, keep order
+    def apply(self, i: MenuItem):
+        data = self.model_dump(exclude_none=True)
+        if "options" in data:
+            try:
+                data["options"] = options.parse(data["options"])
+            except ValueError as e:
+                raise HTTPException(422, f"Options: {e}")
+        if "price" in data:
+            data["price"] = cents(data["price"])
         if "category" in data:
             data["category"] = data["category"].lower()
+        for k in ("dietary", "allergens", "aliases"):
+            if k in data:
+                data[k] = list(dict.fromkeys(x.lower() for x in data[k]))  # drop repeats, keep order
         for k, v in data.items():
-            setattr(p, k, v)
+            setattr(i, k, v)
 
 
-class NewProduct(ProductFields):
-    name_en: str = Field(min_length=1, max_length=200)
+class NewItem(ItemFields):
+    name: str = Field(min_length=1, max_length=200)
     category: str = Field(min_length=1, max_length=50)
-    price: int = Field(gt=0, le=1_000_000)
-    sizes: list[Size] = Field(min_length=1)
-    colours: list[Colour] = Field(min_length=1)
-    stock: int = Field(ge=0, le=100_000)  # starting stock for each size x colour
+    price: float = Field(gt=0, le=100_000)
 
 
-@app.post("/api/products", dependencies=[dash])
-def add_product(body: NewProduct):
+@app.post("/api/menu", dependencies=[dash])
+def add_item(body: NewItem):
     with Session() as db:
-        nums = [int(i[1:]) for i in db.scalars(select(Product.id)) if re.fullmatch(r"P\d+", i)]
-        p = Product(id=f"P{max(nums, default=0) + 1:02d}", name_bn="", aliases=[])
-        body.apply(p)
-        p.sync_variants(new_stock=body.stock)
-        db.add(p)
+        nums = [int(i[1:]) for i in db.scalars(select(MenuItem.id)) if re.fullmatch(r"M\d+", i)]
+        i = MenuItem(id=f"M{max(nums, default=0) + 1:02d}", description="", options=[], dietary=[], allergens=[], aliases=[], available=True)
+        body.apply(i)
+        db.add(i)
         db.commit()
-        return product_row(p)
+        return item_row(i)
 
 
-@app.patch("/api/products/{product_id}", dependencies=[dash])
-def edit_product(product_id: str, body: ProductFields):
-    """Rename, reprice, change sizes/colours: new combinations start at 0 stock, removed ones are dropped."""
+@app.patch("/api/menu/{item_id}", dependencies=[dash])
+def edit_item(item_id: str, body: ItemFields):
     with Session() as db:
-        p = _get(db, Product, product_id)
-        body.apply(p)
-        p.sync_variants()
+        i = _get(db, MenuItem, item_id)
+        body.apply(i)
         db.commit()
-        return product_row(p)
+        return item_row(i)
 
 
-class StockEdit(BaseModel):
-    size: str
-    colour: str
-    stock: int = Field(ge=0, le=100_000)
-
-
-@app.patch("/api/products/{product_id}/stock", dependencies=[dash])
-def edit_stock(product_id: str, body: StockEdit):
+@app.delete("/api/menu/{item_id}", dependencies=[dash])
+def delete_item(item_id: str):
+    """Past orders keep their item names; an unconfirmed quote with it fails as "unknown item"."""
     with Session() as db:
-        _get(db, Variant, (product_id, body.size, body.colour)).stock = body.stock
-        db.commit()
-        return product_row(_get(db, Product, product_id))
-
-
-@app.delete("/api/products/{product_id}", dependencies=[dash])
-def delete_product(product_id: str):
-    """Past orders keep their item names; an unconfirmed quote for it fails as "out of stock"."""
-    with Session() as db:
-        p = _get(db, Product, product_id)
-        for photo in (MEDIA_DIR / "products").glob(f"{p.id}.*"):
+        i = _get(db, MenuItem, item_id)
+        for photo in (MEDIA_DIR / "menu").glob(f"{i.id}.*"):
             photo.unlink()
-        db.delete(p)
+        db.delete(i)
         db.commit()
     return {"ok": True}
 
 
-@app.post("/api/products/{product_id}/photo", dependencies=[dash])
-async def upload_photo(product_id: str, file: UploadFile):
+@app.post("/api/menu/{item_id}/photo", dependencies=[dash])
+async def upload_photo(item_id: str, file: UploadFile):
     ext = {"image/jpeg": "jpg", "image/png": "png"}.get(file.content_type)  # what WhatsApp accepts
     data = await file.read()
     if not ext or not data or len(data) > 5_000_000:
-        raise HTTPException(400, "Photo must be a JPG or PNG under 5 MB.")
+        raise HTTPException(400, "Upload a JPG or PNG photo under 5 MB.")
     with Session() as db:
-        p = _get(db, Product, product_id)
-        folder = MEDIA_DIR / "products"
+        i = _get(db, MenuItem, item_id)
+        folder = MEDIA_DIR / "menu"
         folder.mkdir(exist_ok=True)
-        for old in folder.glob(f"{p.id}.*"):
+        for old in folder.glob(f"{i.id}.*"):
             old.unlink()
-        (folder / f"{p.id}.{ext}").write_bytes(data)
-        return product_row(p)
+        (folder / f"{i.id}.{ext}").write_bytes(data)
+        return item_row(i)
 
+
+# --- analytics -----------------------------------------------------------------------------------
 
 def _period(db, start, end) -> dict:
     chat_ids = set(db.scalars(select(Message.conversation_id).where(
@@ -406,13 +436,16 @@ def _period(db, start, end) -> dict:
     flagged = set(db.scalars(select(Conversation.id).where(Conversation.id.in_(chat_ids), Conversation.needs_human)))
     orders = db.scalars(select(Order).where(Order.created_at >= start, Order.created_at < end)).all()
     live = [o for o in orders if o.status != "cancelled"]
+    booked = db.scalars(select(Booking).where(Booking.created_at >= start, Booking.created_at < end, Booking.status != "cancelled")).all()
     revenue = sum(o.total for o in live)
     ai_cost, ai_tokens = db.execute(select(func.sum(LlmUsage.cost_usd), func.sum(LlmUsage.input_tokens + LlmUsage.output_tokens))
                                     .where(LlmUsage.created_at >= start, LlmUsage.created_at < end)).one()
+    customers = {o.conversation_id for o in live} | {b.conversation_id for b in booked}  # chats that ordered or booked
     return {"revenue": revenue, "orders": len(live), "cancelled": len(orders) - len(live),
+            "bookings": len(booked), "covers": sum(b.party_size for b in booked),
             "ai_cost_usd": round(ai_cost or 0, 4), "ai_tokens": ai_tokens or 0,
             "avg_order": round(revenue / len(live)) if live else 0, "chats": len(chat_ids),
-            "conversion_pct": round(100 * len({o.conversation_id for o in live} & chat_ids) / len(chat_ids)) if chat_ids else 0,
+            "conversion_pct": round(100 * len(customers & chat_ids) / len(chat_ids)) if chat_ids else 0,
             "ai_handled_pct": round(100 * len(chat_ids - human_ids - flagged) / len(chat_ids)) if chat_ids else 0,
             "_orders": orders, "_live": live}
 
@@ -428,17 +461,16 @@ def _count(pairs, labels: dict | None = None, top: int | None = None) -> list[di
 
 @app.get("/api/analytics", dependencies=[dash])
 def analytics(days: int = Query(30, ge=1, le=365)):
-    # ponytail: aggregates in Python over the period's orders, fine for a small shop; move to SQL GROUP BY past ~100k orders.
-    tz = ZoneInfo(BUSINESS.get("timezone", "Asia/Dhaka"))
-    first = datetime.now(tz).date() - timedelta(days=days - 1)
-    utc = lambda d: datetime.combine(d, time(), tz).astimezone(timezone.utc).replace(tzinfo=None)  # noqa: E731
+    # ponytail: aggregates in Python over the period's orders, fine for a small café; move to SQL GROUP BY past ~100k orders.
+    first = hours.local_now().date() - timedelta(days=days - 1)
+    utc = lambda d: hours.to_utc(datetime.combine(d, time()))  # noqa: E731
     start, end = utc(first), utc(first + timedelta(days=days))
     with Session() as db:
         cur = _period(db, start, end)
         prev = _period(db, utc(first - timedelta(days=days)), start)
     by_day = {first + timedelta(days=i): {"revenue": 0, "orders": 0} for i in range(days)}
     for o in cur["_live"]:
-        d = by_day[o.created_at.replace(tzinfo=timezone.utc).astimezone(tz).date()]
+        d = by_day[hours.to_local(o.created_at).date()]
         d["revenue"] += o.total
         d["orders"] += 1
     live = cur["_live"]
@@ -447,8 +479,7 @@ def analytics(days: int = Query(30, ge=1, le=365)):
         "current": {k: v for k, v in cur.items() if not k.startswith("_")},
         "previous": {k: v for k, v in prev.items() if not k.startswith("_")},
         "daily": [{"date": d.isoformat(), **v} for d, v in by_day.items()],
-        "top_products": _count(((l["name"], l["unit_price"] * l["quantity"], l["quantity"]) for o in live for l in o.items), top=5),
-        "payment": _count(((o.payment_method, o.total, 1) for o in live), BUSINESS["payment_methods"]),
-        "delivery": _count(((o.delivery_area, o.total, 1) for o in live), BUSINESS["delivery"]),
+        "top_items": _count(((line["name"], line["unit_price"] * line["quantity"], line["quantity"]) for o in live for line in o.items), top=5),
+        "fulfilment": _count(((o.fulfilment, o.total, 1) for o in live), tools.FULFILMENT),
         "status": [{"status": s, "count": sum(o.status == s for o in cur["_orders"])} for s in ORDER_STATUSES],
     }

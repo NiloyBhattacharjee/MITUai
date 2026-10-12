@@ -3,13 +3,13 @@ import { api, usePoll } from './App.jsx'
 import { Icon, cx } from './ui.jsx'
 
 const EXAMPLES = [
-  { lang: 'Bangla', topic: 'Product & price', text: 'ভাই, কালো পাঞ্জাবি আছে? দাম কত?' },
-  { lang: 'Banglish', topic: 'Delivery charge', text: 'apu delivery charge koto outside dhaka?' },
-  { lang: 'English', topic: 'Place an order', text: 'I want to order the blue kurti in M size' },
-  { lang: 'Banglish', topic: 'Order status', text: 'amar order kothay? 01712345678' },
-  { lang: 'English', topic: 'Human handoff', text: 'I want to talk to a real person' },
+  { topic: 'Menu & price', text: 'How much is a large oat flat white?' },
+  { topic: 'Place an order', text: 'Can I order a smashed avo with a poached egg for pickup asap?' },
+  { topic: 'Book a table', text: 'Table for 4 tomorrow at 12:30?' },
+  { topic: 'Dietary', text: 'What vegan breakfast do you have?' },
+  { topic: 'Opening hours', text: 'Are you open on Sunday afternoon?' },
+  { topic: 'Human handoff', text: 'I want to talk to a real person' },
 ]
-const LANG_STYLE = { Bangla: 'bg-ok/10 text-ok', Banglish: 'bg-violet/10 text-violet', English: 'bg-info/10 text-info' }
 
 export const time = (iso) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
@@ -131,7 +131,7 @@ export default function Simulator() {
           Chat with {shop.agent_name}, {shop.name}'s AI assistant
         </h1>
         <p className="mt-4 text-muted max-w-xl leading-relaxed">
-          Message in Bangla, English or Banglish, or hold the mic to send a voice note. This runs the exact same agent as real WhatsApp messages, and every chat shows up live in the dashboard.
+          Ask about the menu, order for pickup or delivery, or book a table. Hold the mic to send a voice note, or send a photo. This runs the exact same agent as real WhatsApp messages, and every chat shows up live in the dashboard.
         </p>
 
         <h2 className="mt-12 mb-4 text-sm font-medium">Try a message</h2>
@@ -139,10 +139,7 @@ export default function Simulator() {
           {EXAMPLES.map((ex) => (
             <button key={ex.text} disabled={!started} onClick={() => send(ex.text)}
               className="card text-left p-4 transition enabled:hover:border-brand/50 enabled:hover:-translate-y-0.5 enabled:active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs text-muted">{ex.topic}</span>
-                <span className={cx('chip text-[10px]!', LANG_STYLE[ex.lang])}>{ex.lang}</span>
-              </div>
+              <span className="text-xs text-muted">{ex.topic}</span>
               <div className="mt-2.5 text-sm">{ex.text}</div>
             </button>
           ))}
@@ -169,7 +166,7 @@ export default function Simulator() {
                 <h2 className="font-semibold text-zinc-900">Start a chat</h2>
                 <p className="mt-1 text-sm text-zinc-500">Pick any phone number. It identifies this customer in the dashboard.</p>
                 <label htmlFor="sim-phone" className="block mt-5 text-sm font-medium text-zinc-700">Phone number</label>
-                <input id="sim-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="01712345678" inputMode="tel"
+                <input id="sim-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0412 345 678" inputMode="tel"
                   className="mt-2 w-full rounded-xl px-4 py-2.5 bg-zinc-50 ring-1 ring-zinc-200 focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none transition" />
                 <button className="mt-4 w-full rounded-xl py-2.5 bg-[#008069] hover:bg-[#006e5a] text-white font-medium transition">Start chat</button>
               </div>

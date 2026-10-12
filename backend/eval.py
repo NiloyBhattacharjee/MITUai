@@ -1,16 +1,17 @@
 """Run the scripted customer conversations in evals/cases.yaml against the real LLM and check what the agent did.
 
     python eval.py                  every case
-    python eval.py cancel refund    only cases whose name contains one of the words
+    python eval.py cancel booking   only cases whose name contains one of the words
 
 It uses LLM_PROVIDER and the keys from .env, so it costs real money: roughly $1-3 for all cases on Sonnet, about
 double on Opus, free on Ollama. Each case runs on its own throwaway database (your shop.db is never touched) and no
-emails are sent. Checks are deterministic: which tools were called, what's in the database, regexes on the reply.
-Exits 1 if any case fails, so it can gate a deploy.
+emails are sent. The café's clock is set to 10:00 (open every day) whenever you run it. Checks are deterministic:
+which tools were called, what's in the database, regexes on the reply. Exits 1 if any case fails.
 """
 import os
 import sys
 import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 _tmp = Path(tempfile.mkdtemp(prefix="mitu-eval-"))  # before importing app: config reads these at import
@@ -22,19 +23,23 @@ import re  # noqa: E402
 import yaml  # noqa: E402
 from sqlalchemy import func, select  # noqa: E402
 
-from app import agent, tools  # noqa: E402
+from app import agent, hours, tools  # noqa: E402
 from app.config import BUSINESS, LLM_PROVIDER, MEDIA_DIR  # noqa: E402
-from app.db import Base, Conversation, LlmUsage, Order, Session, engine, new_product  # noqa: E402
+from app.db import Base, Booking, Conversation, LlmUsage, Order, Session, engine, new_item, now  # noqa: E402
 
 CASES = Path(__file__).parent / "evals" / "cases.yaml"
-PHONE = "01712345678"
+PHONE = "0412345678"
 CONV = f"sim-{PHONE}"
-PAST_ORDER = {"customer_name": "Karim Hasan", "phone": PHONE, "address": "House 1, Road 2, Banani, Dhaka",
-              "delivery_area": "inside_dhaka", "payment_method": "cod", "subtotal": 950, "delivery_charge": 70, "total": 1020,
-              "items": [{"product_id": "P04", "name": "Blue Cotton Kurti", "size": "M", "colour": "Blue", "quantity": 1, "unit_price": 950}]}
-TURN_KEYS = {"say", "calls", "no_calls", "reply", "no_reply", "orders"}
-CASE_KEYS = {"name", "turns", "setup_order", "then"}
-THEN_KEYS = {"needs_human", "called", "order"}
+TURN_KEYS = {"say", "calls", "no_calls", "reply", "no_reply", "orders", "bookings"}
+CASE_KEYS = {"name", "turns", "setup_order", "setup_booking", "then"}
+THEN_KEYS = {"needs_human", "called", "order", "booking"}
+
+
+def café_at_ten():
+    """A fixed UTC offset that makes the café's local time 10:00 now, so messages' timestamps and the tools agree."""
+    utc = datetime.now(timezone.utc)
+    minutes = (10 * 60 - (utc.hour * 60 + utc.minute) + 12 * 60) % (24 * 60) - 12 * 60  # within ±12 hours
+    hours.TZ = timezone(timedelta(minutes=minutes))
 
 
 def load_cases(words: list[str] = ()) -> list[dict]:
@@ -42,22 +47,30 @@ def load_cases(words: list[str] = ()) -> list[dict]:
     return [c for c in cases if not words or any(w.lower() in c["name"].lower() for w in words)]
 
 
-def fresh_db(setup_order: dict | None):
+def fresh_db(case: dict):
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
-    (MEDIA_DIR / "products").mkdir(parents=True, exist_ok=True)
-    (MEDIA_DIR / "products" / "P01.jpg").write_bytes(b"JPEG")  # so send_product_photo has something to send
+    (MEDIA_DIR / "menu").mkdir(parents=True, exist_ok=True)
+    (MEDIA_DIR / "menu" / "M01.jpg").write_bytes(b"JPEG")  # so send_item_photo has something to send
     with Session() as db:
-        db.add_all(new_product(p) for p in BUSINESS["products"])
-        if setup_order is not None:
+        db.add_all(new_item(i) for i in BUSINESS["menu"])
+        if "setup_order" in case or "setup_booking" in case:
             db.add(Conversation(id=CONV, channel="sim", phone=PHONE))
-            db.add(Order(conversation_id=CONV, **{**PAST_ORDER, **setup_order}))
+        if "setup_order" in case:
+            line = {"item_id": "M01", "name": "Flat White", "quantity": 1, "options": ["Regular"], "notes": "", "unit_price": 500}
+            db.add(Order(**{"conversation_id": CONV, "customer_name": "Olivia Chen", "phone": PHONE, "fulfilment": "pickup",
+                            "payment_method": "in_person", "items": [line], "subtotal": 500, "fee": 0, "total": 500,
+                            "ready_at": now() - timedelta(minutes=5), **case["setup_order"]}))
+        if "setup_booking" in case:
+            tomorrow_noon = datetime.combine(hours.local_now().date() + timedelta(days=1), datetime.min.time()) + timedelta(hours=12)
+            db.add(Booking(**{"conversation_id": CONV, "customer_name": "Olivia Chen", "phone": PHONE, "party_size": 2,
+                              "at": hours.to_utc(tomorrow_noon), **case["setup_booking"]}))
         db.commit()
 
 
 def run_case(case: dict) -> tuple[list[str], list[str], float]:
     """(problems, transcript, cost in $). No problems means the case passed."""
-    fresh_db(case.get("setup_order"))
+    fresh_db(case)
     calls, problems, transcript = [], [], []
     real_run_tool = tools.run_tool
 
@@ -65,6 +78,10 @@ def run_case(case: dict) -> tuple[list[str], list[str], float]:
         result = real_run_tool(ctx, name, args)
         calls.append((name, args, result))
         return result
+
+    def count(model):
+        with Session() as db:
+            return db.scalar(select(func.count(model.id)))
 
     tools.run_tool = recording
     try:
@@ -84,10 +101,9 @@ def run_case(case: dict) -> tuple[list[str], list[str], float]:
                 problems.append(f"{at}: reply doesn't match /{turn['reply']}/")
             if "no_reply" in turn and re.search(turn["no_reply"], text, re.I):
                 problems.append(f"{at}: reply matches /{turn['no_reply']}/")
-            if "orders" in turn:
-                with Session() as db:
-                    if (n := db.scalar(select(func.count(Order.id)))) != turn["orders"]:
-                        problems.append(f"{at}: {n} orders in the database, expected {turn['orders']}")
+            for key, model in (("orders", Order), ("bookings", Booking)):
+                if key in turn and (n := count(model)) != turn[key]:
+                    problems.append(f"{at}: {n} {key} in the database, expected {turn[key]}")
     finally:
         tools.run_tool = real_run_tool
 
@@ -96,18 +112,21 @@ def run_case(case: dict) -> tuple[list[str], list[str], float]:
     with Session() as db:
         if "needs_human" in then and bool((conv := db.get(Conversation, CONV)) and conv.needs_human) != then["needs_human"]:
             problems.append(f"needs_human should be {then['needs_human']}")
-        order = db.get(Order, 1)
-        for field, want in then.get("order", {}).items():
-            if (got := getattr(order, field, None)) != want:
-                problems.append(f"order #1 {field} is {got!r}, expected {want!r}")
+        for key, model in (("order", Order), ("booking", Booking)):
+            row = db.get(model, 1)
+            for field, want in then.get(key, {}).items():
+                got = row and (f"{hours.to_local(row.at):%H:%M}" if field == "time" else getattr(row, field, None))
+                if got != want:
+                    problems.append(f"{key} #1 {field} is {got!r}, expected {want!r}")
         cost = db.scalar(select(func.sum(LlmUsage.cost_usd))) or 0.0
     return problems, transcript, cost
 
 
 def main(words: list[str]):
     sys.stdout.reconfigure(encoding="utf-8")
+    café_at_ten()
     cases = load_cases(words)
-    print(f"Running {len(cases)} cases on {LLM_PROVIDER}\n")
+    print(f"Running {len(cases)} cases on {LLM_PROVIDER}, café time {hours.local_now():%a %H:%M}\n")
     failed, total = 0, 0.0
     for case in cases:
         try:
