@@ -6,11 +6,12 @@ from sqlalchemy import select
 
 from app import options
 from app.agent import build_history, respond
-from app.db import Booking, Conversation, MenuItem, Message, Order, Setting
+from app.db import Booking, Conversation, Message, Order, Setting
 from app.main import app
-from app.tools import Ctx, book_table, cancel_booking, cancel_order, check_availability, create_order, saved_details, search_menu
+from app.tools import (Ctx, book_table, cancel_booking, cancel_order, check_availability, create_order, find_item, photo_folder,
+                       saved_details, search_menu)
 
-client, H = TestClient(app), {"X-Admin-Password": "pw"}
+client, H = TestClient(app), {"X-Session": "pw"}
 ORDER = {"customer_name": "Olivia Chen", "phone": "0412 345 678", "fulfilment": "pickup", "pickup_time": "asap",
          "items": [{"item_id": "M01", "quantity": 2, "options": ["large", "Oat"]}]}  # (5.00 + 0.80 + 0.80) x 2
 
@@ -88,11 +89,11 @@ def test_quote_rejects_what_the_kitchen_cant_do(db):
 def test_confirming_checks_again(db, fake_llm):
     c = ctx(db, turn=1)
     assert create_order(c, False, **ORDER)["status"] == "QUOTE_ONLY_NOT_PLACED"
-    db.get(MenuItem, "M01").available = False  # sold out while the customer was deciding
+    find_item(db, "M01").available = False  # sold out while the customer was deciding
     db.commit()
     later = Ctx(db, c.conv, 2)
     assert "sold out" in create_order(later, True)["problems"][0] and db.scalars(select(Order)).all() == []
-    db.get(MenuItem, "M01").available, db.get(MenuItem, "M01").price = True, 550  # back, but dearer
+    find_item(db, "M01").available, find_item(db, "M01").price = True, 550  # back, but dearer
     db.commit()
     changed = create_order(later, True)
     assert changed["status"] == "QUOTE_CHANGED_NOT_PLACED" and changed["summary"]["total"] == "$14.20"
@@ -183,8 +184,8 @@ def test_menu_photo_goes_out_on_whatsapp(db, fake_llm, graph):
     import json
     from app.config import MEDIA_DIR
     from app.main import message_dict
-    (MEDIA_DIR / "menu").mkdir(exist_ok=True)
-    (MEDIA_DIR / "menu" / "M01.jpg").write_bytes(b"JPEGDATA")
+    photo_folder().mkdir(parents=True, exist_ok=True)
+    (photo_folder() / "M01.jpg").write_bytes(b"JPEGDATA")
     results = []
     fake_llm.turns = [lambda h, call: results.extend([call("send_item_photo", {"item_id": "M01"}),
                                                       call("send_item_photo", {"item_id": "M02"})]) or "Here it is"]
@@ -195,7 +196,7 @@ def test_menu_photo_goes_out_on_whatsapp(db, fake_llm, graph):
     assert sent == [{"messaging_product": "whatsapp", "to": "61412345678", "type": "image",
                      "image": {"id": "media-out", "caption": "Flat White – $5.00"}}]
     photo = db.scalars(select(Message).where(Message.audio_path.is_not(None))).one()
-    assert message_dict(photo)["image_url"] == "/media/menu/M01.jpg" and message_dict(photo)["audio_url"] is None
+    assert message_dict(photo)["image_url"] == "/media/menu/little-fern/M01.jpg" and message_dict(photo)["audio_url"] is None
     assert search_menu(ctx(db), "flat white")["results"][0]["has_photo"]
 
 
@@ -242,8 +243,12 @@ def test_refuses_the_old_clothing_shop_database(db):
     from app.db import engine, init_db
     with engine.begin() as conn:
         conn.execute(text("CREATE TABLE variants (product_id TEXT)"))
-    with pytest.raises(RuntimeError, match="clothing-shop"):
-        init_db()
+    try:
+        with pytest.raises(RuntimeError, match="older, single-business"):
+            init_db()
+    finally:
+        with engine.begin() as conn:  # not one of our tables, so the next test's drop_all wouldn't remove it
+            conn.execute(text("DROP TABLE variants"))
 
 
 def test_owner_reply_blocked_after_whatsapp_window(db, graph):
@@ -280,9 +285,9 @@ def test_owner_edits_the_menu_in_the_dashboard(db):
 
     assert client.delete("/api/menu/M03", headers=H).json()["ok"]
     db.expire_all()
-    assert db.get(MenuItem, "M03") is None
+    assert find_item(db, "M03") is None
     assert client.post("/api/menu/M02/photo", files={"file": ("x.gif", b"GIF", "image/gif")}, headers=H).status_code == 400
     r = client.post("/api/menu/M02/photo", files={"file": ("x.png", b"PNGDATA", "image/png")}, headers=H).json()
-    assert r["photo_url"].startswith("/media/menu/M02.png?v=")
+    assert r["photo_url"].startswith("/media/menu/little-fern/M02.png?v=")
     r = client.post("/api/menu/M02/photo", files={"file": ("y.jpg", b"JPEG", "image/jpeg")}, headers=H).json()
-    assert r["photo_url"].startswith("/media/menu/M02.jpg")  # replaced, not added
+    assert r["photo_url"].startswith("/media/menu/little-fern/M02.jpg")  # replaced, not added

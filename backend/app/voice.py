@@ -12,7 +12,8 @@ from typing import Protocol
 
 import httpx
 
-from .config import BUSINESS, STT_PROVIDER, env
+from .config import STT_PROVIDER, env
+from .tenancy import cfg
 
 
 @dataclass
@@ -56,15 +57,22 @@ def wav_seconds(wav: bytes) -> float:
 # --- providers ----------------------------------------------------------------------------
 
 OPENAI_URL = "https://api.openai.com/v1/audio"
-# Whisper spells menu words better when it has seen them.
-STT_HINT = f"Customer message to {BUSINESS['name']}: " + ", ".join(i["name"] for i in BUSINESS.get("menu", [])) + ", pickup, delivery, booking."
+
+
+def stt_hint() -> str:
+    """Whisper spells menu words better when it has seen them."""
+    from .db import MenuItem, Session  # avoid import cycle
+    from sqlalchemy import select
+    with Session() as db:
+        names = db.scalars(select(MenuItem.name)).all()
+    return f"Customer message to {cfg()['name']}: " + ", ".join(names) + ", pickup, delivery, booking."
 
 
 class OpenAISTT:
     def transcribe(self, audio_bytes: bytes) -> Transcript:
         r = httpx.post(f"{OPENAI_URL}/transcriptions", timeout=120,
                        headers={"Authorization": f"Bearer {env('OPENAI_API_KEY')}"},
-                       data={"model": env("OPENAI_STT_MODEL", "whisper-1"), "response_format": "verbose_json", "prompt": STT_HINT},
+                       data={"model": env("OPENAI_STT_MODEL", "whisper-1"), "response_format": "verbose_json", "prompt": stt_hint()},
                        files={"file": ("voice.wav", audio_bytes, "audio/wav")})
         r.raise_for_status()
         j = r.json()

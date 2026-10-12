@@ -58,7 +58,7 @@ def test_message_cut_off_by_restart_is_resumed(db, fake_llm, graph):
     assert db.get(SeenWhatsAppMessage, "wamid.ok", populate_existing=True).done
 
     msg = wa_payload("wamid.cut", "are you open?")["entry"][0]["changes"][0]["value"]["messages"][0]
-    db.add(SeenWhatsAppMessage(id="wamid.cut", payload=msg, done=False))  # stored, then the server died
+    db.add(SeenWhatsAppMessage(id="wamid.cut", payload=msg, done=False, channel="whatsapp", shop_id="little-fern"))  # stored, then the server died
     db.add(SeenWhatsAppMessage(id="wamid.legacy"))  # row from before the inbox existed: done is NULL, not pending
     db.commit()
     resume_unfinished()
@@ -88,8 +88,8 @@ def test_messenger_and_instagram_reach_mitu(db, fake_llm, graph):
     assert post_fb(fb_payload("instagram", mid="ig.1", text="how much is a latte?")).status_code == 200
 
     assert len(fake_llm.calls) == 2
-    assert db.get(Conversation, "messenger-psid-42").channel == "messenger"
-    assert db.get(Conversation, "instagram-psid-42").channel == "instagram"
+    assert db.get(Conversation, "little-fern:messenger-psid-42").channel == "messenger"
+    assert db.get(Conversation, "little-fern:instagram-psid-42").channel == "instagram"
     sent = [json.loads(r.content) for r in graph if r.url.path.endswith("/me/messages")]
     assert sent == [{"recipient": {"id": "psid-42"}, "messaging_type": "RESPONSE", "message": {"text": "ok"}}] * 2
     assert graph[0].headers["Authorization"] == "Bearer page-tok"
@@ -97,12 +97,13 @@ def test_messenger_and_instagram_reach_mitu(db, fake_llm, graph):
 
 def test_messenger_photo_sent_by_public_url(db, fake_llm, graph):
     from app.config import MEDIA_DIR
-    (MEDIA_DIR / "menu").mkdir(exist_ok=True)
-    (MEDIA_DIR / "menu" / "M01.jpg").write_bytes(b"JPEGDATA")
+    from app.tools import photo_folder
+    photo_folder().mkdir(parents=True, exist_ok=True)
+    (photo_folder() / "M01.jpg").write_bytes(b"JPEGDATA")
     fake_llm.turns = [lambda h, call: call("send_item_photo", {"item_id": "M01"}) and "Here it is"]
     post_fb(fb_payload(text="can I see a photo?"))
     sent = [json.loads(r.content)["message"] for r in graph if r.url.path.endswith("/me/messages")]
-    assert sent[0] == {"attachment": {"type": "image", "payload": {"url": "https://shop.test/media/menu/M01.jpg", "is_reusable": True}}}
+    assert sent[0] == {"attachment": {"type": "image", "payload": {"url": "https://shop.test/media/menu/little-fern/M01.jpg", "is_reusable": True}}}
     assert sent[1]["text"] == "Flat White – $5.00" and sent[2] == {"text": "Here it is"}
 
 

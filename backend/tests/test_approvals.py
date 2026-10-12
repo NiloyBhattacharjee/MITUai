@@ -8,7 +8,7 @@ from app.db import Approval, Booking, Conversation, Message, Order, now
 from app.main import app
 from app.tools import Ctx, create_order, request_approval
 
-client, H = TestClient(app), {"X-Admin-Password": "pw"}
+client, H = TestClient(app), {"X-Session": "pw"}
 
 
 def chat(db, conv_id="sim-1"):
@@ -38,7 +38,7 @@ def test_refund_request_waits_for_staff_and_the_customer_hears_back(db, monkeypa
     pending = client.get("/api/approvals", headers=H).json()
     assert pending[0]["summary"].startswith("Refund for order #1") and pending[0]["order"]["total"] == 500
     r = client.post(f"/api/approvals/{asked['approval_id']}", json={"decision": "declined", "note": "We'll remake it next visit."},
-                    headers={"X-Admin-Password": "rina-pw"}).json()
+                    headers={"X-Session": "rina-pw"}).json()
     assert r["status"] == "declined" and r["decided_by"] == "Rina" and r["delivery_note"] is None
     assert last_text(db) == "Sorry, the team couldn't approve your request (Refund for order #1: flat white was cold). We'll remake it next visit."
     again = client.post(f"/api/approvals/{asked['approval_id']}", json={"decision": "approved"}, headers=H)

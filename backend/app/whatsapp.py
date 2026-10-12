@@ -7,10 +7,11 @@ import logging
 import httpx
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import PlainTextResponse
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from . import config
-from .db import SeenWhatsAppMessage, Session
+from . import config, tenancy
+from .db import SeenWhatsAppMessage, Session, Shop
 
 log = logging.getLogger(__name__)
 http = httpx.Client(timeout=30)  # tests swap this for a mock transport
@@ -22,11 +23,11 @@ def _url(path: str) -> str:
 
 
 def _auth() -> dict:
-    return {"Authorization": f"Bearer {config.WHATSAPP_TOKEN}"}
+    return {"Authorization": f"Bearer {tenancy.shop().whatsapp_token}"}  # the café in scope's own token and number
 
 
 def _post_message(payload: dict) -> dict:
-    r = http.post(_url(f"{config.WHATSAPP_PHONE_NUMBER_ID}/messages"), headers=_auth(),
+    r = http.post(_url(f"{tenancy.shop().whatsapp_phone_number_id}/messages"), headers=_auth(),
                   json={"messaging_product": "whatsapp", **payload})
     r.raise_for_status()
     return r.json()
@@ -61,7 +62,7 @@ def download_media(media_id: str) -> tuple[bytes, str]:
 
 
 def upload_media(data: bytes, mime: str = "audio/ogg") -> str:
-    r = http.post(_url(f"{config.WHATSAPP_PHONE_NUMBER_ID}/media"), headers=_auth(),
+    r = http.post(_url(f"{tenancy.shop().whatsapp_phone_number_id}/media"), headers=_auth(),
                   data={"messaging_product": "whatsapp", "type": mime}, files={"file": (f"upload.{mime.split('/')[1]}", data, mime)})
     r.raise_for_status()
     return r.json()["id"]
@@ -74,10 +75,18 @@ def valid_signature(body: bytes, header: str | None) -> bool:
     return hmac.compare_digest(expected, header)
 
 
-def first_time_seen(message_id: str, payload: dict, channel: str = "whatsapp") -> bool:
+def shop_for(column: str, value) -> Shop | None:
+    """The café a webhook was sent to, by its WhatsApp phone number id or Page/Instagram id.
+    With a single café, everything goes to it, so a one-café install needs no ids set up."""
+    with Session() as db:
+        shops = db.scalars(select(Shop)).all()
+    return next((s for s in shops if value and getattr(s, column) == str(value)), shops[0] if len(shops) == 1 else None)
+
+
+def first_time_seen(message_id: str, payload: dict, channel: str, shop_id: str) -> bool:
     """Store the message as pending. False if Meta already sent it."""
     with Session() as db:
-        db.add(SeenWhatsAppMessage(id=message_id, payload=payload, done=False, channel=channel))
+        db.add(SeenWhatsAppMessage(id=message_id, payload=payload, done=False, channel=channel, shop_id=shop_id))
         try:
             db.commit()
             return True
@@ -103,7 +112,14 @@ async def receive(request: Request, background: BackgroundTasks):
     data = json.loads(body)
     for entry in data.get("entry", []):
         for change in entry.get("changes", []):
-            for msg in change.get("value", {}).get("messages", []):  # "statuses" updates are ignored
-                if first_time_seen(msg["id"], msg):
-                    background.add_task(handle_whatsapp_message, msg)
+            value = change.get("value", {})
+            if not value.get("messages"):  # "statuses" updates are ignored
+                continue
+            number = value.get("metadata", {}).get("phone_number_id")
+            if not (shop := shop_for("whatsapp_phone_number_id", number)):
+                log.warning("WhatsApp message for number %s, which no café is connected to", number)
+                continue
+            for msg in value["messages"]:
+                if first_time_seen(msg["id"], msg, "whatsapp", shop.id):
+                    background.add_task(handle_whatsapp_message, shop, msg)
     return {"ok": True}

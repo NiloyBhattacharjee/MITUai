@@ -1,28 +1,31 @@
-"""Opening hours from business.yaml, in the café's timezone. Local times here are naive datetimes in that timezone;
+"""Opening hours of the café in scope, in its timezone. Local times here are naive datetimes in that timezone;
 the database stores naive UTC."""
 from datetime import date, datetime, time, timezone
 from zoneinfo import ZoneInfo
 
-from .config import BUSINESS
+from .tenancy import cfg
 
-TZ = ZoneInfo(BUSINESS.get("timezone", "UTC"))
 DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
 
+def tz():
+    return ZoneInfo(cfg().get("timezone", "UTC"))
+
+
 def local_now() -> datetime:
-    return datetime.now(TZ).replace(tzinfo=None, second=0, microsecond=0)
+    return datetime.now(tz()).replace(tzinfo=None, second=0, microsecond=0)
 
 
 def to_utc(local: datetime) -> datetime:
-    return local.replace(tzinfo=TZ).astimezone(timezone.utc).replace(tzinfo=None)
+    return local.replace(tzinfo=tz()).astimezone(timezone.utc).replace(tzinfo=None)
 
 
 def to_local(utc: datetime) -> datetime:
-    return utc.replace(tzinfo=timezone.utc).astimezone(TZ).replace(tzinfo=None)
+    return utc.replace(tzinfo=timezone.utc).astimezone(tz()).replace(tzinfo=None)
 
 
 def spec(day: date) -> str:
-    return str(BUSINESS["hours"].get(DAYS[day.weekday()]) or "closed")
+    return str(cfg()["hours"].get(DAYS[day.weekday()]) or "closed")
 
 
 def periods(day: date) -> list[tuple[datetime, datetime]]:
