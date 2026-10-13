@@ -1,4 +1,4 @@
-# Local:  docker compose up --build, then open http://localhost
+# Local:  docker compose up --build, then open http://localhost (or HTTP_PORT=8080 docker compose up --build: http://localhost:8080)
 # Server: CI sets IMAGE_PREFIX=ghcr.io/<owner>/<repo> and pulls the images it built (see .github/workflows/ci-cd.yml).
 #         Set SITE_ADDRESS=your.domain in .env and point the domain's DNS at the server: Caddy gets the HTTPS certificate.
 services:
@@ -22,7 +22,8 @@ services:
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-:80}
       BACKEND_URL: backend:8000
-    ports: ["80:80", "443:443", "443:443/udp"]
+    # HTTP_PORT / HTTPS_PORT: when something else on this machine already uses 80 or 443
+    ports: ["${HTTP_PORT:-80}:80", "${HTTPS_PORT:-443}:443", "${HTTPS_PORT:-443}:443/udp"]
     volumes:
       - caddy:/data  # HTTPS certificates; losing them means re-issuing, which Let's Encrypt rate-limits
     depends_on: [backend]
