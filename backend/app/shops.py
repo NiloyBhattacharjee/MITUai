@@ -37,5 +37,5 @@ def pick(shop_id: str | None = None) -> Shop:
     with Session() as db:
         shop = db.get(Shop, shop_id) if shop_id else db.scalar(select(Shop).order_by(Shop.created_at))
     if not shop:
-        raise SystemExit(f"No café {shop_id or 'yet'}: run python seed.py (or manage.py add-shop) first.")
+        raise SystemExit(f"No business {shop_id or 'yet'}: run python seed.py (or manage.py add-shop) first.")
     return shop

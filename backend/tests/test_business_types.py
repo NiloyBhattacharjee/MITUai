@@ -1,5 +1,5 @@
-"""The other kinds of business in examples/: a shop that counts stock and takes orders for later days, and a salon that
-books appointments with the right person."""
+"""The kinds of business besides the café: the default shop (business.yaml) that counts stock and takes orders for
+later days, and a salon that books appointments with the right person."""
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -19,7 +19,7 @@ client = TestClient(app)
 
 @pytest.fixture
 def shop(db):
-    with tenancy.scope(add_cafe(db, "nakshi", {"Owner": "shop-pw"}, EXAMPLES / "online-shop.yaml")) as s:
+    with tenancy.scope(add_cafe(db, "nakshi", {"Owner": "shop-pw"}, EXAMPLES.parent / "business.yaml")) as s:
         yield s
 
 
@@ -139,3 +139,16 @@ def test_dashboard_cancel_returns_stock_and_edits_counts(db, shop, clock):
 
 def test_salon_cant_send_a_big_table_booking_to_the_team(db, salon):
     assert "kind must be one of" in run_tool(ctx(db, "bloom:sim-1"), "request_approval", {"kind": "large_booking", "summary": "12 people"})["error"]
+
+
+def test_seed_never_adds_another_business_menu_to_the_first_one(db, cafe):
+    import seed
+    assert seed.add_new_items(db, cafe, EXAMPLES.parent / "business.yaml") is None  # the shop's file, but this is the café
+    assert not find_item(db, "P01")
+    assert seed.add_new_items(db, cafe, EXAMPLES / "cafe.yaml") == 0  # its own file: nothing new
+
+
+def test_dashboard_words_fit_the_business(db, shop, salon):
+    words = {pw: client.get("/api/business", headers={"X-Session": pw}).json()["labels"] for pw in ("pw", "shop-pw", "salon-pw")}
+    assert words == {"pw": {"kitchen": "Kitchen", "menu": "Menu"}, "shop-pw": {"kitchen": "Packing", "menu": "Products"},
+                     "salon-pw": {"kitchen": "Kitchen", "menu": "Services"}}

@@ -24,7 +24,7 @@ import yaml  # noqa: E402
 from sqlalchemy import func, select  # noqa: E402
 
 from app import agent, hours, shops, tenancy, tools  # noqa: E402
-from app.config import BUSINESS_FILE, LLM_PROVIDER  # noqa: E402
+from app.config import LLM_PROVIDER, ROOT  # noqa: E402
 from app.db import Approval, Base, Booking, Conversation, LlmUsage, Order, Session, engine, now  # noqa: E402
 
 CASES = Path(__file__).parent / "evals" / "cases.yaml"
@@ -49,11 +49,11 @@ def load_cases(words: list[str] = ()) -> list[dict]:
 
 
 def fresh_db(case: dict):
-    """A throwaway database with one café from business.yaml; returns it."""
+    """A throwaway database with the café from examples/cafe.yaml (the cases are written for its menu); returns it."""
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     with Session() as db:
-        shop = shops.create(db, CAFE, shops.read(BUSINESS_FILE), {})
+        shop = shops.create(db, CAFE, shops.read(ROOT / "examples" / "cafe.yaml"), {})
     with tenancy.scope(shop), Session() as db:
         tools.photo_folder().mkdir(parents=True, exist_ok=True)
         (tools.photo_folder() / "M01.jpg").write_bytes(b"JPEG")  # so send_item_photo has something to send

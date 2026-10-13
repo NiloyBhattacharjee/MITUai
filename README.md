@@ -1,30 +1,32 @@
-# Mitu: an AI assistant for cafés and restaurants on WhatsApp, Messenger and Instagram
+# Mitu: an AI assistant for shops that sell in DMs on Facebook, Instagram and WhatsApp
 
-Mitu answers a café's customers in chat, and one install can run it for many cafés, each with its own menu, settings, staff, chats, orders and WhatsApp/Messenger/Instagram accounts. It answers menu questions (prices, options, dietary tags, allergens, what's sold out), takes pickup and delivery orders for today, books tables, understands voice notes and photos, and hands off to a person when it should. The demo café is **Little Fern Café**, set up in `business.yaml`.
+Small sellers on Facebook, Instagram and WhatsApp have no website or checkout: every sale happens in DMs, and most messages are "price?", "is M available?", "delivery charge outside Dhaka?" and "COD?". Mitu answers them in chat, day and night. It answers product questions (prices, sizes and colours, what's left in stock, delivery charges), takes orders for delivery or pickup with cash on delivery or bKash (for today or a later day), counts stock down so the last one is never sold twice, understands voice notes and photos (a screenshot of a post: "how much is this one?"), and hands off to a person when it should. The demo business is **Nakshi Threads**, a clothing shop in Dhaka, set up in `business.yaml`.
 
-- **Dashboard** (home page; staff sign in with their café's ID and their own password):
+One install runs many businesses, each with its own products, settings, staff, chats, orders and WhatsApp/Messenger/Instagram accounts. The same code also runs a café (table bookings, allergens) and a salon (appointments with named staff): see `examples/` and [What a business does](#what-a-business-does).
+
+- **Dashboard** (home page; staff sign in with their business's ID and their own password):
   - **Overview:** revenue per day, orders, bookings, top items, pickup vs delivery, AI-handled share and AI cost, each compared with the previous period.
-  - **Kitchen:** live orders in New / Preparing / Ready columns, with a sound when one arrives and a button to pause online orders.
+  - **Kitchen** (Packing for a shop): live orders in New / Preparing / Ready columns, with a sound when one arrives and a button to pause online orders.
   - **Orders:** every order, with a CSV export.
-  - **Bookings:** the next two weeks of tables.
+  - **Bookings:** the next two weeks of table bookings or appointments (not shown for a shop).
   - **Approvals:** refunds, discounts, big-group bookings and other exceptions the assistant won't decide alone. Staff approve or decline with an optional message, and the customer is told in their chat; an approved big group is booked automatically.
   - **Conversations:** live chats with staff replies (with saved replies from `business.yaml`) and an AI on/off switch per chat. Under each customer message, "AI used …" shows the tools the AI called, what they returned and what that turn cost.
-  - **Menu:** prices, options, dietary info, photos, and a sold-out switch.
+  - **Menu** (Products for a shop, Services for a salon): prices, options, stock, dietary info, photos, and a sold-out switch.
 - **Chat simulator** (`#/simulator`, signed-in staff only, since every message runs the paid LLM): a WhatsApp-style phone in the browser, with a hold-to-record mic and a photo button.
 - **Real chats:** WhatsApp through the Cloud API webhook; Messenger and Instagram through the Messenger Platform webhook.
 
 Every channel runs the same code path: `pipeline.py` → `agent.respond()` → LLM with tools.
 
 ```
-business.yaml          a café: hours, ordering, bookings, fixed messages, menu (each café on the install has its own)
-examples/              other kinds of business: a salon (appointments) and an online shop (stock, cash on delivery, bKash)
+business.yaml          the demo shop: hours, delivery, payments, fixed messages, products (each business on the install has its own)
+examples/              other kinds of business: a café (orders, table bookings; the tests and the eval use it) and a salon (appointments)
 backend/
   app/config.py        .env, money helpers
-  app/tenancy.py       which café a request or message belongs to; every query on a café's data is filtered to it
+  app/tenancy.py       which business a request or message belongs to; every query on a business's data is filtered to it
   app/auth.py          staff passwords (scrypt) and login sessions
-  app/shops.py         creating cafés from business.yaml files
+  app/shops.py         creating businesses from business.yaml files
   app/db.py            SQLAlchemy models (SQLite by default)
-  app/hours.py         opening hours in the café's timezone
+  app/hours.py         opening hours in the business's timezone
   app/options.py       menu options ("Milk: Full cream, Oat +0.80") and checking a customer's choices
   app/tools.py         the AI's tools: search_menu, get_menu, get_item, send_item_photo, saved_details, create_order,
                        get_order_status, cancel_order, check_availability, book_table, my_bookings, cancel_booking,
@@ -36,7 +38,7 @@ backend/
   app/messenger.py     Messenger and Instagram webhook + Send API
   app/voice.py         speech-to-text / text-to-speech (OpenAI, Amazon Transcribe), ffmpeg helpers
   app/main.py          FastAPI: dashboard + simulator API
-  manage.py            add cafés and staff, connect their WhatsApp number and Facebook Page
+  manage.py            add businesses and staff, connect their WhatsApp number and Facebook Page
   seed.py  cli.py  eval.py  backup.py  compare_stt.py  tests/  evals/
 frontend/              React + Vite + Tailwind (dashboard + simulator), served by Caddy in Docker
 ```
@@ -52,10 +54,10 @@ cp .env.example .env           # then fill in at least the LLM credentials, SHOP
 cd backend
 python -m venv .venv
 .venv/bin/pip install -r requirements.txt        # Windows: .venv\Scripts\pip
-.venv/bin/python seed.py                         # creates the first café (SHOP_ID) from business.yaml and .env,
-                                                 # with a few sample orders and a booking
+.venv/bin/python seed.py                         # creates the first business (SHOP_ID) from business.yaml and .env,
+                                                 # with a few sample orders and a booking (café only for now: issue #8)
                                                  # (add --demo for 60 days of fake orders and bookings to fill the Overview)
-.venv/bin/python cli.py 0412345678               # optional: chat with the first café's agent in the terminal
+.venv/bin/python cli.py 0412345678               # optional: chat with the first business's agent in the terminal
 .venv/bin/uvicorn app.main:app --reload --port 8000
 
 # frontend (second terminal)
@@ -64,17 +66,17 @@ npm install
 npm run dev                                      # http://localhost:5173
 ```
 
-Open http://localhost:5173 and sign in with the café ID (`SHOP_ID`, e.g. `little-fern`) and `ADMIN_PASSWORD`. `seed.py` refuses passwords under 8 characters or like `admin` and `change-me`. The simulator is at `#/simulator` once you're signed in, and talks to your café.
+Open http://localhost:5173 and sign in with the business ID (`SHOP_ID`, e.g. `nakshi`) and `ADMIN_PASSWORD`. `seed.py` refuses passwords under 8 characters or like `admin` and `change-me`. The simulator is at `#/simulator` once you're signed in, and talks to your business.
 
-**Coming from an older version** (the clothing shop, or the café before it ran several cafés)? Its database doesn't fit, and the server will say so. Move `backend/shop.db` (and `backend/media/`) aside, or point `DATABASE_URL` at a new file, then run `seed.py`.
+**Coming from an older version** (from before one install ran several businesses)? Its database doesn't fit, and the server will say so. Move `backend/shop.db` (and `backend/media/`) aside, or point `DATABASE_URL` at a new file, then run `seed.py`.
 
-Run the tests (no credentials needed, the LLM and Graph API are mocked, and the café's clock is pinned to 10:00). They include checks that one café can never see or change another's data, through any page or webhook:
+Run the tests (no credentials needed, the LLM and Graph API are mocked, and the business's clock is pinned to 10:00). They include checks that one business can never see or change another's data, through any page or webhook:
 
 ```bash
 cd backend && .venv/bin/python -m pytest
 ```
 
-The tests use a fake LLM, so they can't tell you whether the real model behaves. The eval does: 35 scripted customer conversations in `backend/evals/cases.yaml` (menu questions, allergies, ordering, required options, closing time, cancelling, bookings, refunds and big groups going to the team, complaints, prompt injection, …) run against the real model from `.env`. Each runs on a throwaway database at 10:00 café time, checking which tools were called, what ended up in the database, and the replies. Run it after changing the prompt, the tools, the menu format or the model. It costs roughly $1–3 per full run on Sonnet (about double on Opus, free on Ollama):
+The tests use a fake LLM, so they can't tell you whether the real model behaves. The eval does: 35 scripted customer conversations in `backend/evals/cases.yaml`, on the café in `examples/cafe.yaml` (shop and salon cases are issue #6) (menu questions, allergies, ordering, required options, closing time, cancelling, bookings, refunds and big groups going to the team, complaints, prompt injection, …) run against the real model from `.env`. Each runs on a throwaway database at 10:00 café time, checking which tools were called, what ended up in the database, and the replies. Run it after changing the prompt, the tools, the menu format or the model. It costs roughly $1–3 per full run on Sonnet (about double on Opus, free on Ollama):
 
 ```bash
 cd backend && .venv/bin/python eval.py              # all cases; exit code 1 if any fail
@@ -83,7 +85,7 @@ cd backend && .venv/bin/python eval.py              # all cases; exit code 1 if 
 
 Models vary from run to run, so a single failure is worth reading (the transcript is printed) before you change anything. Add a case whenever a real chat goes wrong.
 
-**Docker:** `cp .env.example .env`, fill it in, then `docker compose up --build` and open http://localhost. The first start creates the first café from `.env` and `business.yaml`. Caddy serves the app and passes `/api`, `/media` and the webhooks to the backend, which has no public port. Seed data loads on first start, and the database and media live in the `data` volume. A `backup` container writes a `.tar.gz` of the database and media to `./backups` at start and then daily, keeping 14.
+**Docker:** `cp .env.example .env`, fill it in, then `docker compose up --build` and open http://localhost. The first start creates the first business from `.env` and `business.yaml`. Caddy serves the app and passes `/api`, `/media` and the webhooks to the backend, which has no public port. Seed data loads on first start, and the database and media live in the `data` volume. A `backup` container writes a `.tar.gz` of the database and media to `./backups` at start and then daily, keeping 14.
 
 ### LLM settings
 
@@ -109,13 +111,13 @@ Models vary from run to run, so a single failure is worth reading (the transcrip
 8. Still under Webhook fields, **Subscribe** to `messages`.
 9. Send a WhatsApp message from your verified number to the test number. The reply comes from Mitu, and the chat appears in the dashboard.
 
-`seed.py` copies `WHATSAPP_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID` (and `PAGE_ACCESS_TOKEN`, `PAGE_ID`, `INSTAGRAM_ID`) into the first café when it creates it. To change them after that, use `python manage.py connect <café ID> --whatsapp-token ...`; editing `.env` won't change an existing café.
+`seed.py` copies `WHATSAPP_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID` (and `PAGE_ACCESS_TOKEN`, `PAGE_ID`, `INSTAGRAM_ID`) into the first business when it creates it. To change them after that, use `python manage.py connect <business ID> --whatsapp-token ...`; editing `.env` won't change an existing business.
 
 For anything beyond a demo, create a **System User** in Business Settings and generate a permanent token instead of the 24-hour one. A real business number also needs Meta business verification.
 
-## 3. Set up a café
+## 3. Set up a business
 
-Each café is described by a file like `business.yaml` (the first café uses `BUSINESS_FILE`, default `business.yaml`):
+Each business is described by a file like `business.yaml` (the first business uses `BUSINESS_FILE`, default `business.yaml`):
 
 - **The basics:** name, the assistant's name, `timezone`, `currency`, location (add parking and transport, since people ask), about.
 - **`hours`:** per day, e.g. `"07:00-15:00"` or `"07:00-11:00, 17:00-21:00"`; leave a day out to close it. Orders and bookings are only accepted inside these. `prep_minutes` is the earliest an order can be ready, and `quote_reminder_minutes` is when a customer who hasn't answered an order summary gets one nudge.
@@ -126,11 +128,11 @@ Each café is described by a file like `business.yaml` (the first café uses `BU
 - **`saved_replies`:** quick replies staff can insert in the chat box.
 - **`menu`:** each item has an `id`, `name`, `category`, `price`, `description`, `options`, `dietary`, `allergens`, `aliases` (other names customers use) and optionally `available: false`. Options are one line per group: `"Size*: Regular, Large +0.80"` (`*` = must pick one), `"Milk: Full cream, Oat +0.80"` (at most one), `"Extras (any): Extra shot +0.60"` (any number). The dashboard's Menu page uses the same format.
 
-For the first café, run `python seed.py`. After that, manage the menu on the Menu page; re-running `seed.py` (or `manage.py update-shop`) only adds items that aren't in the database yet.
+For the first business, run `python seed.py`. After that, manage the menu on the Menu page; re-running `seed.py` (or `manage.py update-shop`) only adds items that aren't in the database yet.
 
-## 4. Run several cafés on one install
+## 4. Run several businesses on one install
 
-Every café gets its own menu, settings, staff, chats, orders, bookings, approvals and AI-cost figures. Staff sign in with their café's ID and their own password and only ever see their café. The LLM and speech keys in `.env` are shared, and the Overview page shows what each café's AI costs, which is what you'd bill on.
+Every business gets its own menu, settings, staff, chats, orders, bookings, approvals and AI-cost figures. Staff sign in with their business's ID and their own password and only ever see their business. The LLM and speech keys in `.env` are shared, and the Overview page shows what each business's AI costs, which is what you'd bill on.
 
 ```bash
 cd backend
@@ -142,19 +144,19 @@ cd backend
 .venv/bin/python manage.py list
 ```
 
-All cafés share one Meta app (`WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`) and the same webhook URLs. Each WhatsApp message is routed to the café whose number it was sent to (`phone_number_id`), and each Messenger or Instagram message to the café whose Page or account received it. With a single café on the install, everything goes to it, so the ids are optional. To put your customers' own numbers on your Meta app, Meta requires you to join its Tech Provider program and use Embedded Signup; until then, each café can use a number on your own Meta business account.
+All businesses share one Meta app (`WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`) and the same webhook URLs. Each WhatsApp message is routed to the business whose number it was sent to (`phone_number_id`), and each Messenger or Instagram message to the business whose Page or account received it. With a single business on the install, everything goes to it, so the ids are optional. To put your customers' own numbers on your Meta app, Meta requires you to join its Tech Provider program and use Embedded Signup; until then, each business can use a number on your own Meta business account.
 
-### Other kinds of business
+### What a business does
 
 What a business does follows from the sections in its settings file, and the assistant, its tools and the dashboard's pages follow from that:
 
 | Section | Turns on |
 |---|---|
-| `fulfilment` + `payment_methods` | orders (pickup, delivery zones, any payment methods, e.g. cash on delivery and bKash) and the Kitchen and Orders pages |
+| `fulfilment` + `payment_methods` | orders (pickup, delivery zones, any payment methods, e.g. cash on delivery and bKash) and the Kitchen (or Packing) and Orders pages |
 | `reservations` | table bookings |
 | `appointments` | services by appointment with named staff (`providers`), for items that have `minutes` |
 
-On items, `stock: 12` makes the assistant count them down (it never sells more than are left, and a cancelled order puts them back), and `orders_days_ahead: 7` lets customers order for a later day. `kind: a hair and beauty salon` is how the assistant describes the business. Two working examples: `examples/salon.yaml` and `examples/online-shop.yaml`.
+On items, `stock: 12` makes the assistant count them down (it never sells more than are left, and a cancelled order puts them back), and `orders_days_ahead: 7` lets customers order for a later day. `kind: a hair and beauty salon` is how the assistant describes the business. `labels` renames dashboard pages (`menu: Catalogue`). `business.yaml` is a working shop; `examples/cafe.yaml` and `examples/salon.yaml` are the others.
 
 ```bash
 .venv/bin/python manage.py add-shop bloom ../examples/salon.yaml --owner-password 'a-long-password'
@@ -172,7 +174,7 @@ On items, `stock: 12` makes the assistant count them down (it never sells more t
 
 | Secret | What |
 |---|---|
-| `ENV_FILE` | The whole production `.env` (API keys, the first café's `SHOP_ID`, `ADMIN_PASSWORD`, `STAFF` and tokens, `PUBLIC_URL`, `SITE_ADDRESS`) |
+| `ENV_FILE` | The whole production `.env` (API keys, the first business's `SHOP_ID`, `ADMIN_PASSWORD`, `STAFF` and tokens, `PUBLIC_URL`, `SITE_ADDRESS`) |
 | `DEPLOY_HOST` | Server address; without it the deploy step is skipped |
 | `DEPLOY_USER` | SSH user that can run `docker` |
 | `DEPLOY_SSH_KEY` | That user's private key |
@@ -180,7 +182,7 @@ On items, `stock: 12` makes the assistant count them down (it never sells more t
 Update the production settings with `gh secret set ENV_FILE < .env.production` and re-run the workflow.
 On the server, set `SITE_ADDRESS` in `ENV_FILE` to your domain and point the domain's DNS at the server with ports 80 and 443 open: Caddy gets and renews the HTTPS certificate itself. Your webhook URLs are then `https://<domain>/webhook` and `https://<domain>/messenger/webhook`.
 
-Add more cafés on the server with `docker compose exec backend python manage.py ...` (their business files can sit in the `data` volume).
+Add more businesses on the server with `docker compose exec backend python manage.py ...` (their business files can sit in the `data` volume).
 
 Backups land in `~/mituai/backups` on the server. **Copy them off the server** (e.g. a nightly `rclone copy` or `aws s3 sync` from cron): a backup on the same disk doesn't survive losing the server. To restore, stop the stack, put `shop.db` and `media/` from an archive back into the `data` volume, and start it again.
 
@@ -198,23 +200,24 @@ The flow: WhatsApp `audio` message → `GET /{media_id}` → download with the t
 Simplest options picked where the brief was open:
 
 - **Order confirmation is enforced in code, not just the prompt.** `create_order(confirmed=false)` checks everything and quotes, and stores the quote on the chat. `confirmed=true` only works if that quote was made in an *earlier* turn, so the customer must have sent a message after seeing the summary. Whether that message means "yes" is the LLM's call. Confirming checks everything again (sold out since? kitchen closed? orders paused?), and if the price changed it shows the new total and asks again.
+- **The demo is a shop that sells in DMs, not a café.** Cafés mostly take orders through delivery apps, so chat is a side channel for them; for Facebook and Instagram sellers the chat is the whole shop. The café stays as `examples/cafe.yaml`, and the tests and eval still run on it.
 - **Orders are for today only** by default, for "as soon as possible" (now plus `prep_minutes`) or a time today inside opening hours. A shop that ships sets `orders_days_ahead`; the time must still be inside its hours that day. There's no capacity per day: add one when a business gets more orders than it can make.
 - **Bookings are one step** (the prompt makes the assistant repeat the details and wait for a yes): a wrong booking is cheap to cancel, unlike a wrong food order. Capacity is a seat count: every booking within one sitting of the new one counts against it. That over-counts slightly; a table plan would be exact.
 - **Approvals vs handoff:** a request with a clear yes/no (refund, discount, big group) goes to the Approvals queue and the assistant keeps chatting; an upset customer, a serious allergy question or catering goes to a person and the assistant steps back. Two staff can't both answer one request: the decision is a conditional update.
 - **One reminder** per unanswered order summary, checked every minute by the backend and sent only inside the messaging window. It's marked before sending, so a failed send never becomes a second nudge.
 - **Sold out is a switch; stock counts are optional.** Cafés run out of things during the day and nobody counts croissants into a system, so items without `stock` just have the switch. A shop sets `stock`: placing an order counts it down with a conditional update (two customers can't both buy the last one), and cancelling, by the customer or on the dashboard, puts it back.
 - **Appointments are bookings with a service and a person.** A service is a menu item with `minutes`, so search, photos, prices and the dashboard's Menu page all work for it. The assistant offers the start times when someone who does that service is free for its whole length inside opening hours, and books the first free person unless the customer asked for one. Everyone works the business's hours; per-person hours and days off aren't built yet.
-- **Allergens:** the assistant only repeats the tags on each item plus the café's allergen note, never says a dish is safe, and hands serious allergy questions to a person.
+- **Allergens:** the assistant only repeats the tags on each item plus the business's allergen note, never says a dish is safe, and hands serious allergy questions to a person.
 - **Time:** each customer message in the history starts with its local send time (`[Sat 12 Oct 2026 13:05]`), so "tomorrow" and "in 20 minutes" work. It's part of the stored message, so the cached prompt prefix doesn't change from turn to turn.
 - **Money** is stored in cents and shown with `currency` from `business.yaml`.
 - **History is text only**, except the customer's own photos (JPG/PNG), which are re-sent as images every turn (prompt caching makes the repeats cheap). Each turn's tool calls stay inside that turn, and the model re-looks things up next turn. The last 30 messages are sent.
-- **Every café's data is filtered in one place.** Café tables share a `Scoped` base. A SQLAlchemy hook adds `shop_id = <café in scope>` to every SELECT, UPDATE and DELETE on them, new rows get it automatically, and a query with no café in scope raises instead of returning everything. One forgotten filter can't leak another café's orders. Dashboard requests get their café from the login session, webhooks from the number or Page they were sent to, and background jobs loop over cafés.
+- **Every business's data is filtered in one place.** Business tables share a `Scoped` base. A SQLAlchemy hook adds `shop_id = <business in scope>` to every SELECT, UPDATE and DELETE on them, new rows get it automatically, and a query with no business in scope raises instead of returning everything. One forgotten filter can't leak another business's orders. Dashboard requests get their business from the login session, webhooks from the number or Page they were sent to, and background jobs loop over businesses.
 - **Customers can only see and change their own orders and bookings,** the ones made in the same chat. Nothing is looked up by a phone number someone types.
 - **Handoff** sets `needs_human` and switches the AI off for that chat. Turning it back on in the dashboard clears the flag. If the LLM call fails, the customer gets a polite fixed message and the chat is flagged.
 - **Fixed replies** (unsupported media, unclear or too-long voice note, errors) skip the LLM and come from `business.yaml`.
 - **`% handled by AI`** counts the period's chats that were never flagged and got no staff reply.
 - **"Today"** uses `timezone` from `business.yaml`.
 - **Live updates** use polling (1–5 s), not websockets. The kitchen sound plays when the page is open and its polling sees a new order (browsers pause polling in background tabs, so keep the kitchen screen in front).
-- **Dashboard auth:** each person has their own password (scrypt-hashed) at their café, and signing in returns a session token, valid for 30 days, that the dashboard sends with every request. Only the token's SHA-256 is stored. 10 wrong passwords from one IP lock that IP out for 15 minutes; it's per IP, so a guesser can't lock the owner out. The lockout is in memory and resets on restart. Each café's Meta tokens are stored in the database as plain text; encrypt them at rest if the database ever leaves the server. Media files under `/media` are public but have random 128-bit names.
+- **Dashboard auth:** each person has their own password (scrypt-hashed) at their business, and signing in returns a session token, valid for 30 days, that the dashboard sends with every request. Only the token's SHA-256 is stored. 10 wrong passwords from one IP lock that IP out for 15 minutes; it's per IP, so a guesser can't lock the owner out. The lockout is in memory and resets on restart. Each business's Meta tokens are stored in the database as plain text; encrypt them at rest if the database ever leaves the server. Media files under `/media` are public but have random 128-bit names.
 - **The simulator** runs in background tasks like WhatsApp and the page polls, so it exercises the exact same path. Simulator chat IDs are `sim-<phone>`.
 - **Menu search** is a fuzzy scan in Python over names, categories and aliases, which is fine for a menu.

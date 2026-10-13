@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { cloneElement, useEffect, useState } from 'react'
 import Simulator from './Simulator.jsx'
 import { Approvals, Bookings, Chats, Kitchen, Menu, Orders } from './Dashboard.jsx'
 import Analytics from './Analytics.jsx'
@@ -85,7 +85,7 @@ function ThemeButton({ className }) {
 
 const PAGES = [
   { id: 'overview', label: 'Overview', el: <Analytics /> },
-  // needs: whether this business uses the page (from /api/business; shown until that loads)
+  // needs: whether this business uses the page; label: its name, unless /api/business gives another (Packing, Products)
   { id: 'kitchen', label: 'Kitchen', el: <Kitchen />, needs: (s) => s.orders !== false },
   { id: 'orders', label: 'Orders', el: <Orders />, needs: (s) => s.orders !== false },
   { id: 'bookings', label: 'Bookings', el: <Bookings />, needs: (s) => s.tables !== false || s.appointments },
@@ -94,7 +94,7 @@ const PAGES = [
   { id: 'menu', label: 'Menu', el: <Menu /> },
 ]
 
-// Sign in with the café's ID and your own password; the session token goes with every request after that.
+// Sign in with the business's ID and your own password; the session token goes with every request after that.
 function Login({ onDone }) {
   const [shopId, setShopId] = useState(() => localStorage.getItem('shop') || '')
   const [pw, setPw] = useState('')
@@ -109,7 +109,7 @@ function Login({ onDone }) {
       localStorage.setItem('shop', r.shop)
       onDone()
     } catch (err) {
-      setError(err.status === 401 ? 'Wrong café ID or password. Try again.' : err.status === 429 ? 'Too many wrong passwords. Try again in 15 minutes.' : 'Cannot reach the server.')
+      setError(err.status === 401 ? 'Wrong business ID or password. Try again.' : err.status === 429 ? 'Too many wrong passwords. Try again in 15 minutes.' : 'Cannot reach the server.')
     }
     setBusy(false)
   }
@@ -120,8 +120,8 @@ function Login({ onDone }) {
         <div className="absolute bottom-0 right-0 w-[28rem] h-[28rem] rounded-full bg-teal-300/10 blur-3xl" />
         <Brand light />
         <div className="relative max-w-md">
-          <h1 className="text-4xl font-semibold tracking-tight leading-[1.1]">Your café's AI assistant, and every order and booking it takes.</h1>
-          <p className="mt-5 text-white/60 leading-relaxed">Orders for the kitchen, table bookings and every WhatsApp, Messenger and Instagram chat in one place. Step in whenever a customer needs a person.</p>
+          <h1 className="text-4xl font-semibold tracking-tight leading-[1.1]">Your shop's AI assistant: every DM answered, every order taken.</h1>
+          <p className="mt-5 text-white/60 leading-relaxed">Orders, stock, bookings and every WhatsApp, Messenger and Instagram chat in one place. Step in whenever a customer needs a person.</p>
         </div>
         <p className="relative text-xs text-white/40">© {new Date().getFullYear()} Mitu</p>
       </div>
@@ -129,10 +129,10 @@ function Login({ onDone }) {
         <form onSubmit={submit} className="enter w-full max-w-sm">
           <div className="lg:hidden mb-12"><Brand /></div>
           <h2 className="text-2xl font-semibold tracking-tight">Welcome back</h2>
-          <p className="mt-1 text-sm text-muted">Sign in to your café's dashboard.</p>
-          <label htmlFor="shop" className="block mt-8 mb-2 text-sm font-medium">Café ID</label>
+          <p className="mt-1 text-sm text-muted">Sign in to your business's dashboard.</p>
+          <label htmlFor="shop" className="block mt-8 mb-2 text-sm font-medium">Business ID</label>
           <input id="shop" value={shopId} onChange={(e) => { setShopId(e.target.value); setError('') }} autoFocus={!shopId} required
-            autoCapitalize="none" autoCorrect="off" spellCheck="false" placeholder="little-fern" className="field h-11!" />
+            autoCapitalize="none" autoCorrect="off" spellCheck="false" placeholder="your-business" className="field h-11!" />
           <label htmlFor="pw" className="block mt-5 mb-2 text-sm font-medium">Your password</label>
           <input id="pw" type="password" value={pw} onChange={(e) => { setPw(e.target.value); setError('') }} autoFocus={!!shopId} required className="field h-11!" />
           {error && <p role="alert" className="mt-2 text-sm text-danger">{error}</p>}
@@ -158,7 +158,7 @@ function Shell({ page, shop }) {
   const [asks] = useLive('/api/approvals', 5000)
   const waiting = convs?.filter((c) => c.needs_human).length
   const counts = { chats: waiting, approvals: asks?.filter((a) => a.status === 'pending').length }
-  const pages = PAGES.filter((p) => !p.needs || p.needs(shop))
+  const pages = PAGES.filter((p) => !p.needs || p.needs(shop)).map((p) => ({ ...p, label: shop.labels?.[p.id] || p.label }))
   const current = pages.find((p) => p.id === page) || pages[0]
   const logout = () => { api('/api/logout', { method: 'POST' }).catch(() => {}).finally(() => dispatchEvent(new Event('logout'))) }
   const badge = (p) => counts[p.id] > 0 && (
@@ -207,7 +207,7 @@ function Shell({ page, shop }) {
       </header>
 
       <main className="min-w-0 px-4 pt-6 pb-28 md:px-10 md:pt-10 md:pb-12">
-        <div key={current.id} className="enter max-w-6xl mx-auto">{current.el}</div>
+        <div key={current.id} className="enter max-w-6xl mx-auto">{cloneElement(current.el, { title: current.label })}</div>
       </main>
 
       <nav style={{ gridTemplateColumns: `repeat(${pages.length}, minmax(0, 1fr))` }}
@@ -232,7 +232,7 @@ function Shell({ page, shop }) {
 export default function App() {
   const [hash, setHash] = useState(location.hash)
   const [authed, setAuthed] = useState(!!localStorage.getItem('session'))
-  const [shop, setShop] = useState({ name: 'Café' })
+  const [shop, setShop] = useState({ name: 'Mitu' })
   useEffect(() => {
     const onHash = () => setHash(location.hash)
     const onLogout = () => { localStorage.removeItem('session'); cache.clear(); setAuthed(false) }

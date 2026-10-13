@@ -114,12 +114,12 @@ def test_webhooks_reach_the_cafe_they_were_sent_to(db, harbour, fake_llm, graph)
 
 def test_manage_adds_cafes_staff_and_connections(db, tmp_path, capsys):
     import manage
-    from conftest import BUSINESS_FILE
+    from conftest import CAFE_FILE
     with pytest.raises(SystemExit, match="8 characters"):
-        manage.main(["add-shop", "corner-cafe", str(BUSINESS_FILE), "--owner-password", "short"])
+        manage.main(["add-shop", "corner-cafe", str(CAFE_FILE), "--owner-password", "short"])
     with pytest.raises(SystemExit, match="lowercase"):
-        manage.main(["add-shop", "Corner Cafe", str(BUSINESS_FILE), "--owner-password", "long-enough-pw"])
-    manage.main(["add-shop", "corner-cafe", str(BUSINESS_FILE), "--owner-password", "long-enough-pw"])
+        manage.main(["add-shop", "Corner Cafe", str(CAFE_FILE), "--owner-password", "long-enough-pw"])
+    manage.main(["add-shop", "corner-cafe", str(CAFE_FILE), "--owner-password", "long-enough-pw"])
     manage.main(["add-staff", "corner-cafe", "Sam", "sams-password"])
     manage.main(["connect", "corner-cafe", "--whatsapp-number-id", "777", "--page-token", "tok-7"])
     manage.main(["list"])
@@ -132,4 +132,4 @@ def test_manage_adds_cafes_staff_and_connections(db, tmp_path, capsys):
     r = client.post("/api/login", json={"shop": "corner-cafe", "password": "sams-password"}).json()
     assert r["name"] == "Sam"
     with pytest.raises(SystemExit, match="already exists"):
-        manage.main(["add-shop", "corner-cafe", str(BUSINESS_FILE), "--owner-password", "long-enough-pw"])
+        manage.main(["add-shop", "corner-cafe", str(CAFE_FILE), "--owner-password", "long-enough-pw"])

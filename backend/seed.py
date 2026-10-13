@@ -1,5 +1,5 @@
-"""Create the first café from .env and business.yaml if the database has none, then add sample orders and a booking.
-Usage: python seed.py              (the first café if missing, new menu items from business.yaml, samples if it has no orders)
+"""Create the first business from .env and business.yaml if the database has none, then add sample orders and a booking.
+Usage: python seed.py              (the first business if missing, new menu items from business.yaml, samples if it has no orders)
        python seed.py --if-empty   (only create the first café, with samples, if there are no cafés; used by docker-compose)
        python seed.py --demo       (also ~60 days of random orders and bookings, to see the Overview filled in)
        python seed.py --shop ID    (samples for another café; add cafés with manage.py)
@@ -38,13 +38,23 @@ def first_shop(db) -> Shop:
     shop = shops.create(db, config.FIRST_SHOP_ID, shops.read(config.BUSINESS_FILE), owner,
                         whatsapp_phone_number_id=config.WHATSAPP_PHONE_NUMBER_ID or None, whatsapp_token=config.WHATSAPP_TOKEN or None,
                         page_id=config.PAGE_ID or None, instagram_id=config.INSTAGRAM_ID or None, page_token=config.PAGE_ACCESS_TOKEN or None)
-    print(f"Created café '{shop.id}' from {config.BUSINESS_FILE.name}. Staff sign in with café ID {shop.id} and their password.")
+    print(f"Created '{shop.id}' from {config.BUSINESS_FILE.name}. Staff sign in with business ID {shop.id} and their password.")
     return shop
+
+
+def add_new_items(db, shop: Shop, path) -> int | None:
+    """New menu items from the business file, only if it is this business's file: switching BUSINESS_FILE to another
+    kind of business must not put its products into the existing one."""
+    business = shops.read(path)
+    if business.get("name") != shop.config.get("name"):
+        print(f"{path.name} is {business.get('name')}, not {shop.config.get('name')}: left the menu alone.")
+        return None
+    return shops.add_new_menu_items(db, business.get("menu", []))
 
 
 def samples(db, demo: bool):
     if not ({"pickup", "delivery"} <= set(tools.fulfilment()) and tools.tables()):
-        print("Sample orders and bookings fit the café example only; skipped them.")
+        print("Sample orders and bookings fit the café example only; skipped them.")  # ponytail: shop and salon samples are issue #8
         return
     menu = db.scalars(select(MenuItem).where(MenuItem.available)).all()
     names = ["Olivia Chen", "Jack Wilson", "Priya Sharma", "Liam Nguyen", "Sophie Brown", "Noah Martin", "Mia Rossi"]
@@ -82,9 +92,9 @@ if __name__ == "__main__":
             first_shop(db)
         elif "--if-empty" in sys.argv:
             sys.exit(0)
-        shop = db.get(Shop, shop_id) or sys.exit(f"No café '{shop_id}'. See: python manage.py list")
+        shop = db.get(Shop, shop_id) or sys.exit(f"No business '{shop_id}'. See: python manage.py list")
     with tenancy.scope(shop), Session() as db:
         if shop.id == config.FIRST_SHOP_ID:
-            shops.add_new_menu_items(db, shops.read(config.BUSINESS_FILE).get("menu", []))
+            add_new_items(db, shop, config.BUSINESS_FILE)
         samples(db, "--demo" in sys.argv)
     print("Seeded.")
