@@ -1,0 +1,16 @@
+# Ollama on Windows from Docker Engine inside WSL2 with networkingMode=mirrored. Containers can't reach Windows there,
+# but WSL's own localhost can, so the backend joins WSL's network and Caddy reaches it through the Docker host address.
+# Use it with LLM_PROVIDER=ollama and this line in .env, then docker compose up --build -d:
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.ollama.yml
+services:
+  backend:
+    network_mode: host
+    environment:
+      OLLAMA_URL: http://localhost:11434
+    # Listens only on the Docker host address (docker0), so nothing reaches the backend around Caddy.
+    command: sh -c "python seed.py --if-empty && uvicorn app.main:app --host 172.17.0.1 --port 8000 --proxy-headers --forwarded-allow-ips='*'"
+
+  frontend:
+    environment:
+      BACKEND_URL: host.docker.internal:8000
+    extra_hosts: ["host.docker.internal:host-gateway"]
