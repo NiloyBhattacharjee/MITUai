@@ -96,7 +96,6 @@ def test_messenger_and_instagram_reach_mitu(db, fake_llm, graph):
 
 
 def test_messenger_photo_sent_by_public_url(db, fake_llm, graph):
-    from app.config import MEDIA_DIR
     from app.tools import photo_folder
     photo_folder().mkdir(parents=True, exist_ok=True)
     (photo_folder() / "M01.jpg").write_bytes(b"JPEGDATA")
