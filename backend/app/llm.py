@@ -145,5 +145,5 @@ _llm = None
 def get_llm():
     global _llm
     if _llm is None:
-        _llm = {"anthropic": AnthropicLLM, "ollama": OllamaLLM}.get(LLM_PROVIDER, BedrockLLM)()
+        _llm = {"anthropic": AnthropicLLM, "bedrock": BedrockLLM}.get(LLM_PROVIDER, OllamaLLM)()
     return _llm
