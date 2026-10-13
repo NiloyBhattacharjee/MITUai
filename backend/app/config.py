@@ -26,7 +26,7 @@ DATABASE_URL = env("DATABASE_URL", f"sqlite:///{ROOT / 'backend' / 'shop.db'}")
 MEDIA_DIR = Path(env("MEDIA_DIR", str(ROOT / "backend" / "media")))
 MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 
-LLM_PROVIDER = env("LLM_PROVIDER", "bedrock")  # bedrock | anthropic | ollama
+LLM_PROVIDER = env("LLM_PROVIDER", "ollama")  # ollama | anthropic | bedrock
 
 # One Meta app for every café: it signs and verifies the webhooks. Each café's own WhatsApp number, Page and tokens
 # live on its row in the shops table (manage.py connect).

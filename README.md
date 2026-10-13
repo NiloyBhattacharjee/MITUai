@@ -87,8 +87,8 @@ Models vary from run to run, so a single failure is worth reading (the transcrip
 
 ### LLM settings
 
-- `LLM_PROVIDER=bedrock` (default) uses boto3 `bedrock-runtime` `converse` with tool use, with the model from `BEDROCK_MODEL_ID` and the standard AWS credentials. Enable Claude model access in the Bedrock console first. If your region needs an inference profile, use the prefixed ID (e.g. `us.anthropic.claude-opus-5-5`).
-- `LLM_PROVIDER=ollama` runs a local model through [Ollama](https://ollama.com), with no cloud account: `ollama pull qwen3:4b`, then set `OLLAMA_MODEL`. It needs a model with tool support (and a vision model, like `qwen2.5vl`, for customer photos). Good for trying the flow for free; expect more mistakes and slow replies on a CPU.
+- `LLM_PROVIDER=ollama` (default) runs a local model through [Ollama](https://ollama.com), with no cloud account: `ollama pull qwen3:4b`, or set `OLLAMA_MODEL` to another one. It needs a model with tool support (and a vision model, like `qwen2.5vl`, for customer photos). Good for trying the flow for free; expect more mistakes and slow replies on a CPU.
+- `LLM_PROVIDER=bedrock` uses boto3 `bedrock-runtime` `converse` with tool use, with the model from `BEDROCK_MODEL_ID` and the standard AWS credentials. Enable Claude model access in the Bedrock console first. If your region needs an inference profile, use the prefixed ID (e.g. `us.anthropic.claude-opus-5-5`).
 - `LLM_PROVIDER=anthropic` uses the Anthropic API with `ANTHROPIC_API_KEY`. It runs at `LLM_EFFORT=low` for snappy chat replies, prompt caching is on, and server-side refusal fallbacks are on (`fallbacks: "default"`), so a false-positive safety decline is retried on another model instead of failing.
 
 ## 2. Connect real WhatsApp (Meta test number + ngrok)
