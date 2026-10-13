@@ -18,7 +18,7 @@ _locks = defaultdict(threading.Lock)  # one agent turn at a time per chat (custo
 def system_prompt(first_message: bool) -> str:
     """Built from what this business does (see tools.sells/tables/appts), so a salon's assistant never offers delivery."""
     b = cfg()
-    kind, today_only = b.get("kind", "a café"), not tools.days_ahead()
+    kind, today_only = b.get("kind", "a business"), not tools.days_ahead()
     intro = (f"This is the customer's first message. Start your reply by introducing yourself as {b['agent_name']}, "
              f"{b['name']}'s AI assistant, then answer.") if first_message else "Do not re-introduce yourself."
     jobs = ["answer questions"]

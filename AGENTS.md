@@ -1,6 +1,8 @@
 # Agent guide
 
-Mitu: an AI assistant for cafés on WhatsApp, Messenger and Instagram. One install runs many cafés. Read `README.md` for
+Mitu: an AI assistant for shops that sell in DMs on Facebook, Instagram and WhatsApp; the same code runs cafés and
+salons (`examples/`). One install runs many businesses. `business.yaml` is the demo shop; the tests and the eval run on
+`examples/cafe.yaml`, and the shop and salon have their own tests in `tests/test_business_types.py`. Read `README.md` for
 the layout and the **Decisions** section before changing behaviour; don't redo a decision without saying why.
 
 ## Commands
@@ -15,11 +17,11 @@ CI (`.github/workflows/ci-cd.yml`) runs exactly the first two. Run them before c
 
 ## Rules that protect real data
 
-- **Tenancy:** every café-owned table subclasses `db.Scoped`; `app/tenancy.py` filters every query to the café in
+- **Tenancy:** every business-owned table subclasses `db.Scoped`; `app/tenancy.py` filters every query to the business in
   scope and raises with none. Never add a manual `shop_id` filter as a workaround, never query a `Scoped` table outside
-  `tenancy.scope(...)`. New café tables get a test in `tests/test_tenancy.py` proving one café can't see another's.
+  `tenancy.scope(...)`. New business tables get a test in `tests/test_tenancy.py` proving one business can't see another's.
 - **Money is integer cents.** Convert with `config.cents()`, display with `config.money()`.
-- **Time is the café's timezone** via `hours.local_now()`, never `datetime.now()`. Tests pin the clock to 10:00.
+- **Time is the business's timezone** via `hours.local_now()`, never `datetime.now()`. Tests pin the clock to 10:00.
 - **Order confirmation is enforced in code** (`create_order`), not only in the prompt. Keep it that way.
 - Don't touch `.env`, `backend/shop.db`, `backend/media/` or `backups/`. Secrets and data never go in commits.
 - Every channel goes through `pipeline.py` → `agent.respond()`. Fix shared behaviour there, not per channel.
@@ -38,7 +40,7 @@ CI (`.github/workflows/ci-cd.yml`) runs exactly the first two. Run them before c
 ## Git
 
 - One branch per change, off `main`. Commit and push the branch to `origin` when done. Merge into `main` only when asked; never force-push.
-- Commit messages: imperative subject saying what changed for the café or developer, body only if the why isn't obvious.
+- Commit messages: imperative subject saying what changed for the business or developer, body only if the why isn't obvious.
 - Never skip hooks or commit with failing tests.
 
 ## Issues and the GitHub agent

@@ -1,4 +1,4 @@
-# Scripted customer conversations for eval.py. Each case starts from a fresh database with the business.yaml menu,
+# Scripted customer conversations for eval.py. Each case starts from a fresh database with the examples/cafe.yaml menu,
 # at 10:00 café time (open every day).
 #
 # case:  name, turns, then (optional)

@@ -1,106 +1,64 @@
-# Everything about the business lives here. Swap this file to run a different café or restaurant (examples/ has a salon and an online shop).
-name: Little Fern Café
+# Everything about the business lives here. This one is a shop that sells through Facebook, Instagram and WhatsApp and
+# delivers: orders up to a week ahead, stock counts, cash on delivery or bKash. examples/ has a café and a salon; which
+# sections a file has decides what the assistant does (README: "Other kinds of business").
+name: Nakshi Threads
+kind: an online clothing shop
 agent_name: Mitu
-# alert_email: owner@example.com   # who gets "needs a person" and approval emails (default: ALERT_EMAIL in .env)
-timezone: Australia/Sydney
-currency: "$"
-location: "42 King Street, Newtown NSW 2042. Street parking on King St, Newtown station is a 5-minute walk."
-about: "Neighbourhood café: specialty coffee, all-day breakfast and lunch, and dinner on Thursday to Saturday. Dine in, pickup or local delivery."
+timezone: Asia/Dhaka
+currency: "৳"
+location: "We deliver across Bangladesh. Pickup from our studio: House 12, Road 5, Dhanmondi, Dhaka."
+about: "Hand-finished kurtis, three-pieces, sarees and panjabis, made in small batches in Dhaka."
 
-# Opening hours (24-hour clock). Several periods: "07:00-11:00, 17:00-21:00". Leave a day out (or write closed) to close it.
-# Orders and bookings are only accepted for times inside these.
+# When we pack and hand over orders. A delivery is booked for a day and time inside these.
 hours:
-  mon: "07:00-15:00"
-  tue: "07:00-15:00"
-  wed: "07:00-15:00"
-  thu: "07:00-21:00"
-  fri: "07:00-21:00"
-  sat: "08:00-21:00"
-  sun: "08:00-15:00"
-prep_minutes: 15  # the earliest an order can be ready after it's placed
-quote_reminder_minutes: 10  # one nudge if a customer doesn't answer an order summary
+  sat: "10:00-20:00"
+  sun: "10:00-20:00"
+  mon: "10:00-20:00"
+  tue: "10:00-20:00"
+  wed: "10:00-20:00"
+  thu: "10:00-20:00"
+  fri: "15:00-20:00"
+prep_minutes: 120          # the earliest an order can go out after it's placed
+orders_days_ahead: 7       # customers can ask for a later day; 0 = today only
+quote_reminder_minutes: 30
 
-# Orders are for today only. needs_address: the customer must give a delivery address.
 fulfilment:
-  pickup: {label: Pickup, fee: 0, note: "Collect at the counter, mention your name."}
-  delivery: {label: Delivery, fee: 6.00, needs_address: true, note: "Within 3 km of the café (Newtown, Enmore, Erskineville, Camperdown). Allow 30-45 minutes."}
+  inside_dhaka: {label: Delivery inside Dhaka, fee: 70, needs_address: true, note: "1-2 days. Pay the rider if you chose cash on delivery."}
+  outside_dhaka: {label: Delivery outside Dhaka, fee: 130, needs_address: true, note: "2-4 days by courier."}
+  pickup: {label: Pickup from our studio, fee: 0, note: "House 12, Road 5, Dhanmondi. Mention your order number."}
 
 payment_methods:
-  in_person: {label: Pay in person, note: "Pay by card or cash when you collect, or to the driver on delivery."}
+  cod: {label: Cash on delivery, note: "Pay the rider when it arrives."}
+  bkash: {label: bKash, note: "Send Payment to 01700-000000 (merchant) and reply here with the transaction ID. We pack it once it arrives."}
 
-reservations:
-  capacity: 40                  # seats; bookings within a sitting's length of each other share them
-  sitting_minutes: 90
-  max_party: 8                  # bigger groups go to the team
-  last_booking_before_close: 60 # minutes before closing
-  days_ahead: 30
-
-allergen_note: "Our kitchen handles nuts, gluten, dairy, eggs and soy, so we can't guarantee any dish is free of them."
-
-# Fixed replies that bypass the LLM, and messages the dashboard sends ({order_id}, {when} and {party_size} are filled in).
 messages:
   handoff: "No problem, someone from our team will reply here shortly."
   unsupported_media: "Sorry, I can only read text, voice notes and photos (JPG/PNG) for now. Type your question, or ask for a person."
   voice_unclear: "Sorry, I couldn't catch that voice note. Could you say it again or type it?"
   voice_too_long: "That voice note is a bit long. Please send one under 2 minutes, or type it."
   error: "Sorry, something went wrong on our side. Someone from our team will reply soon."
-  order_preparing: "We're making your order #{order_id} now."
-  order_ready_pickup: "Your order #{order_id} is ready to collect at the counter."
-  order_ready_delivery: "Your order #{order_id} is on its way."
+  order_preparing: "We're packing your order #{order_id} now."
+  order_ready_pickup: "Your order #{order_id} is ready to collect from our studio."
+  order_ready: "Your order #{order_id} is on its way."
   order_cancelled: "Your order #{order_id} has been cancelled. Message us here if you have any questions."
-  booking_cancelled: "Your booking for {party_size} on {when} has been cancelled. Message us here if you have any questions."
   quote_reminder: "Just checking: would you like me to place your order ({total})? Reply yes to confirm, or tell me what to change."
-  # When staff answer a request in the dashboard's Approvals page ({summary} and {note}, the staff's message, are filled in).
   approval_approved: "Good news: the team approved your request ({summary}). {note}"
   approval_declined: "Sorry, the team couldn't approve your request ({summary}). {note}"
-  large_booking_approved: "Good news: your table for {party_size} on {when} is booked (booking #{booking_id}). {note}"
 
-# Quick replies staff can insert in the dashboard's chat box.
 saved_replies:
-  - "Thanks for your patience! We're looking into it now."
-  - "Sorry about that! We'll make it right. Could you tell us a bit more about what happened?"
-  - "Your order is on its way and should be with you shortly."
-  - "We've got your booking noted. See you soon!"
-  - "Thanks for letting us know. We've passed this on to the kitchen."
+  - "Thanks for your order! We'll confirm as soon as the bKash payment arrives."
+  - "Your parcel is with the courier and should reach you soon."
 
-# The menu. price in your currency. options, one line per group:
-#   "Name*: A, B +0.80"     pick exactly one (the * makes it required); +0.80 is the extra cost
-#   "Name: A, B"            pick at most one
-#   "Name (any): A, B +1"   pick any number
-# dietary / allergens: the assistant only ever repeats what is written here. available: false = sold out.
+# stock: how many are left (the assistant won't sell more; cancelled orders put them back). Leave it out to not count.
 menu:
-  - {id: M01, name: Flat White, category: coffee, price: 5.00, description: "Double ristretto with silky steamed milk.",
-     options: ["Size*: Regular, Large +0.80", "Milk: Full cream, Skim, Oat +0.80, Almond +0.80, Soy +0.80", "Extras (any): Extra shot +0.60, Decaf, Vanilla syrup +0.70"],
-     allergens: [milk], aliases: [flatwhite, fw, coffee]}
-  - {id: M02, name: Latte, category: coffee, price: 5.00, description: "Espresso with plenty of steamed milk.",
-     options: ["Size*: Regular, Large +0.80", "Milk: Full cream, Skim, Oat +0.80, Almond +0.80, Soy +0.80", "Extras (any): Extra shot +0.60, Decaf, Vanilla syrup +0.70"],
-     allergens: [milk], aliases: [cafe latte, coffee]}
-  - {id: M03, name: Cappuccino, category: coffee, price: 5.00, description: "Espresso, steamed milk, thick foam and chocolate dusting.",
-     options: ["Size*: Regular, Large +0.80", "Milk: Full cream, Skim, Oat +0.80, Almond +0.80, Soy +0.80", "Extras (any): Extra shot +0.60, Decaf"],
-     allergens: [milk], aliases: [cappucino, capp, coffee]}
-  - {id: M04, name: Long Black, category: coffee, price: 4.50, description: "Double espresso over hot water.",
-     options: ["Size*: Regular, Large +0.80", "Extras (any): Extra shot +0.60, Decaf, Dash of milk"], dietary: [vegan], aliases: [americano, black coffee, coffee]}
-  - {id: M05, name: Chai Latte, category: tea, price: 5.50, description: "House-brewed spiced chai with steamed milk.",
-     options: ["Size*: Regular, Large +0.80", "Milk: Full cream, Oat +0.80, Almond +0.80, Soy +0.80"], allergens: [milk], aliases: [chai]}
-  - {id: M06, name: Iced Latte, category: cold drinks, price: 6.50, description: "Double shot over ice and cold milk.",
-     options: ["Milk: Full cream, Oat +0.80, Almond +0.80", "Extras (any): Extra shot +0.60, Vanilla syrup +0.70"], allergens: [milk], aliases: [iced coffee]}
-  - {id: M07, name: Fresh Orange Juice, category: cold drinks, price: 7.00, description: "Squeezed to order.", dietary: [vegan, gluten-free], aliases: [oj, juice]}
-  - {id: M08, name: Smashed Avo on Sourdough, category: breakfast, price: 19.00, description: "Avocado, feta, cherry tomatoes, dukkah and lemon on toasted sourdough.",
-     options: ["Add (any): Poached egg +3.50, Bacon +5.00, Halloumi +5.00", "Bread: Sourdough, Gluten-free +2.00"],
-     dietary: [vegetarian], allergens: [gluten, milk, nuts, sesame], aliases: [avo toast, avocado, smashed avocado]}
-  - {id: M09, name: Big Breakfast, category: breakfast, price: 26.00, description: "Two eggs your way, bacon, pork sausage, mushrooms, roast tomato, hash brown and sourdough.",
-     options: ["Eggs*: Poached, Fried, Scrambled"], allergens: [gluten, eggs, milk], aliases: [big brekkie, full breakfast, eggs and bacon]}
-  - {id: M10, name: Granola Bowl, category: breakfast, price: 16.00, description: "House toasted granola, coconut yoghurt, berries and maple.",
-     dietary: [vegan], allergens: [nuts, gluten], aliases: [granola, yoghurt bowl]}
-  - {id: M11, name: Banana Bread, category: breakfast, price: 8.00, description: "Toasted, with whipped butter.",
-     options: ["Add: Maple butter +1.50"], dietary: [vegetarian], allergens: [gluten, eggs, milk, nuts], aliases: [banana loaf]}
-  - {id: M12, name: Fried Chicken Burger, category: lunch, price: 24.00, description: "Buttermilk fried chicken, slaw, pickles and chipotle mayo on a brioche bun, with chips.",
-     options: ["Add (any): Cheese +2.00, Bacon +5.00"], allergens: [gluten, eggs, milk], aliases: [chicken burger, burger]}
-  - {id: M13, name: Roast Pumpkin Salad, category: lunch, price: 21.00, description: "Roast pumpkin, quinoa, rocket, pepitas, goat's cheese and balsamic.",
-     options: ["Add (any): Grilled chicken +6.00"], dietary: [vegetarian, gluten-free], allergens: [milk], aliases: [pumpkin salad, salad]}
-  - {id: M14, name: Mushroom Risotto, category: dinner, price: 28.00, description: "Wild mushroom and truffle risotto with parmesan. Thursday to Saturday from 17:00.",
-     dietary: [vegetarian, gluten-free], allergens: [milk], aliases: [risotto]}
-  - {id: M15, name: Almond Croissant, category: sweets, price: 6.50, description: "Twice-baked, filled with frangipane.",
-     dietary: [vegetarian], allergens: [gluten, eggs, milk, nuts], aliases: [croissant, pastry]}
-  - {id: M16, name: Lemon Tart, category: sweets, price: 9.00, description: "Sharp lemon curd in a buttery shell.", available: false,
-     dietary: [vegetarian], allergens: [gluten, eggs, milk], aliases: [tart, dessert]}
+  - {id: P01, name: Indigo Block-print Kurti, category: kurti, price: 1450, stock: 12, description: "Cotton, hand block-printed, three-quarter sleeves.",
+     options: ["Size*: S, M, L, XL"], aliases: [blue kurti, kurta, tunic]}
+  - {id: P02, name: Mustard Embroidered Kurti, category: kurti, price: 1650, stock: 3, description: "Cotton with hand embroidery at the neck.",
+     options: ["Size*: S, M, L, XL"], aliases: [yellow kurti, kurta]}
+  - {id: P03, name: Jamdani Three-piece, category: three-piece, price: 3200, stock: 5, description: "Kameez, salwar and orna. Unstitched.",
+     aliases: [salwar kameez, 3 piece, three piece]}
+  - {id: P04, name: Tangail Cotton Saree, category: saree, price: 2800, stock: 4, description: "Handloom cotton with a contrast border, 5.5 m.",
+     options: ["Colour*: Red, Green, Off-white"], aliases: [sari, cotton saree]}
+  - {id: P05, name: Men's Cotton Panjabi, category: panjabi, price: 1900, stock: 0, description: "Cotton, mandarin collar, wooden buttons.",
+     options: ["Size*: 38, 40, 42, 44"], aliases: [punjabi, kurta]}
+  - {id: P06, name: Gift Wrapping, category: extras, price: 100, description: "Handmade paper and a card with your message.", aliases: [gift wrap]}

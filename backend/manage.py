@@ -20,7 +20,7 @@ from app.db import Session, Shop, Staff, init_db
 
 
 def get_shop(db, shop_id: str) -> Shop:
-    return db.get(Shop, shop_id) or sys.exit(f"No café '{shop_id}'. See: python manage.py list")
+    return db.get(Shop, shop_id) or sys.exit(f"No business '{shop_id}'. See: python manage.py list")
 
 
 def check_password(password: str):
@@ -63,7 +63,7 @@ def main(argv: list[str]):
                 sys.exit(f"'{a.id}' already exists")
             check_password(a.owner_password)
             shops.create(db, a.id, shops.read(a.file), {"Owner": a.owner_password})
-            print(f"Created '{a.id}'. The owner signs in with café ID {a.id}. Next: python manage.py connect {a.id} ...")
+            print(f"Created '{a.id}'. The owner signs in with business ID {a.id}. Next: python manage.py connect {a.id} ...")
         elif a.cmd == "update-shop":
             shop, data = get_shop(db, a.id), shops.read(a.file)
             shop.config = {k: v for k, v in data.items() if k != "menu"}

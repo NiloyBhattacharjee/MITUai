@@ -106,7 +106,7 @@ def login(body: Login, request: Request):
         found = auth.log_in(db, body.shop.strip().lower(), body.password)
     if not found:
         _wrong[ip] = recent + [monotonic()]
-        raise HTTPException(401, "Wrong café ID or password")
+        raise HTTPException(401, "Wrong business ID or password")
     token, person = found
     return {"token": token, "name": person.name, "shop": person.shop_id}
 
@@ -137,7 +137,14 @@ def business():
     c = cfg()
     return {"id": tenancy.shop_id(), "name": c["name"], "agent_name": c["agent_name"], "currency": c.get("currency", "$"),
             # which dashboard pages apply: a salon has no kitchen, a shop no table bookings
-            "orders": tools.sells(), "tables": tools.tables(), "appointments": bool(tools.appts())}
+            "orders": tools.sells(), "tables": tools.tables(), "appointments": bool(tools.appts()), "labels": labels()}
+
+
+def labels() -> dict:
+    """Page names that fit the business; `labels` in its business file overrides them."""
+    shop_only = tools.sells() and not tools.tables()
+    menu = "Products" if shop_only else "Services" if tools.appts() and not tools.sells() else "Menu"
+    return {"kitchen": "Packing" if shop_only else "Kitchen", "menu": menu, **cfg().get("labels", {})}
 
 
 # --- simulator (signed in only: every message runs the paid LLM and can place real orders) ------

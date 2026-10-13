@@ -113,7 +113,7 @@ export function Chats() {
             ))}
             {list?.length === 0 && (
               <Empty icon="chats" title={view === 'needs' ? 'Nobody is waiting' : 'No chats yet'}>
-                {view === 'needs' ? 'The assistant is handling every chat.' : <>Message your café or try the <a href="#/simulator" className="text-ink underline underline-offset-2">simulator</a>.</>}
+                {view === 'needs' ? 'The assistant is handling every chat.' : <>Message your business or try the <a href="#/simulator" className="text-ink underline underline-offset-2">simulator</a>.</>}
               </Empty>
             )}
             {list?.map((c) => (
@@ -182,7 +182,7 @@ export function Chats() {
                     {saved.map((r) => <option key={r} value={r}>{r.length > 70 ? `${r.slice(0, 67)}…` : r}</option>)}
                   </select>
                 )}
-                <input value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Reply as the café…" aria-label="Reply"
+                <input value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Write a reply…" aria-label="Reply"
                   className="field rounded-full! h-11! px-5!" />
                 <button disabled={!reply.trim()} className="btn btn-primary rounded-full! w-11! h-11! px-0!" aria-label="Send"><Icon name="send" /></button>
               </form>
@@ -302,7 +302,7 @@ function Due({ iso }) {
   return <span className={cx('tabular-nums', mins < 0 ? 'text-danger font-medium' : 'text-muted')}>{clock(iso)} · {mins < 0 ? `${span(-mins)} late` : `in ${span(mins)}`}</span>
 }
 
-export function Kitchen() {
+export function Kitchen({ title = 'Kitchen' }) {
   const [orders, refresh, setOrders] = useLive('/api/orders?active=true', 3000)
   const [settings, , setSettings] = useLive('/api/settings', 15000)
   const [sound, setSound] = useState(false)
@@ -335,7 +335,7 @@ export function Kitchen() {
 
   return (
     <>
-      <PageHeader title="Kitchen" sub="Orders to make, soonest first. Moving an order on tells the customer.">
+      <PageHeader title={title} sub="Orders to get ready, soonest first. Moving an order on tells the customer.">
         <button onClick={soundOn} aria-pressed={sound} className={cx('btn', sound ? 'btn-secondary' : 'btn-ghost')}>
           <Icon name="bell" /> {sound ? 'Sound on' : 'Sound off'}
         </button>
@@ -520,7 +520,7 @@ const Section = ({ title, hint, children }) => (
   </section>
 )
 
-export function Menu() {
+export function Menu({ title = 'Menu' }) {
   const [items, refresh, setItems] = useLive('/api/menu', 15000)
   const [open, setOpen] = useState(null)  // null | 'new' | item id
   const [q, setQ] = useState('')
@@ -563,7 +563,7 @@ export function Menu() {
 
   return (
     <>
-      <PageHeader title="Menu" sub="What the assistant offers: prices, options, dietary info and photos. Mark items sold out for the day.">
+      <PageHeader title={title} sub="What the assistant offers: prices, options, stock, dietary info and photos. Mark items sold out.">
         <button onClick={() => setOpen('new')} className="btn btn-primary"><Icon name="plus" /> Add item</button>
       </PageHeader>
 
@@ -597,7 +597,7 @@ export function Menu() {
           </div>
         ))}
       </div>
-      {items && shown.length === 0 && <Empty icon="menu" title={q ? 'Nothing matches' : 'No menu items yet'}>{q ? 'Try another name or category.' : 'Add your first item to start taking orders.'}</Empty>}
+      {items && shown.length === 0 && <Empty icon="menu" title={q ? 'Nothing matches' : 'Nothing here yet'}>{q ? 'Try another name or category.' : 'Add your first item to start taking orders.'}</Empty>}
 
       {open === 'new' && (
         <Drawer title="New menu item" sub="You can add a photo right after." onClose={close}>
