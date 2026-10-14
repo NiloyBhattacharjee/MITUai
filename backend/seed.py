@@ -15,6 +15,20 @@ from app.config import cents
 from app.db import Booking, MenuItem, Order, Session, Shop, init_db
 
 
+# Sample customers who fit where the business is: names, mobile prefix, address. Australian unless listed.
+PEOPLE = {"Asia/Dhaka": (["Nusrat Jahan", "Tanvir Hasan", "Farhana Akter", "Rafiq Islam", "Sadia Rahman", "Arif Hossain", "Mim Chowdhury"],
+                         "017", "Road 7, Banani")}
+AUSTRALIA = (["Olivia Chen", "Jack Wilson", "Priya Sharma", "Liam Nguyen", "Sophie Brown", "Noah Martin", "Mia Rossi"], "04", "12 Example St, Newtown")
+
+
+def people():
+    return PEOPLE.get(hours.tz().key, AUSTRALIA)
+
+
+def phone() -> str:
+    return f"{people()[1]}{random.randint(10000000, 99999999)}"
+
+
 def order(items: list[MenuItem], placed: datetime, status: str, way: str, name: str) -> Order:
     """placed: local time."""
     lines = []
@@ -24,8 +38,8 @@ def order(items: list[MenuItem], placed: datetime, status: str, way: str, name: 
                       "unit_price": i.price})
     subtotal = sum(line["unit_price"] * line["quantity"] for line in lines)
     fee = cents(tools.fulfilment()[way].get("fee", 0))
-    return Order(customer_name=name, phone=f"04{random.randint(10000000, 99999999)}", fulfilment=way,
-                 address="12 Example St, Newtown" if tools.fulfilment()[way].get("needs_address") else None, items=lines,
+    return Order(customer_name=name, phone=phone(), fulfilment=way,
+                 address=people()[2] if tools.fulfilment()[way].get("needs_address") else None, items=lines,
                  subtotal=subtotal, fee=fee, total=subtotal + fee, payment_method=random.choice(list(tools.payments())), status=status,
                  ready_at=hours.to_utc(placed + tools.prep()), created_at=hours.to_utc(placed))
 
@@ -68,7 +82,7 @@ def appointment(db, day: date, name: str) -> Booking | None:
               for m in range(0, int((e - s).total_seconds()) // 60 - service.minutes + 1, step)]
     for start in random.sample(starts, len(starts)):
         if free := [p for p in tools.providers(service.id) if not tools._busy(db, p, start, start + timedelta(minutes=service.minutes))]:
-            b = Booking(customer_name=name, phone="0400000000", party_size=1, service_id=service.id, service=service.name,
+            b = Booking(customer_name=name, phone=phone(), party_size=1, service_id=service.id, service=service.name,
                         provider=random.choice(free), minutes=service.minutes, at=hours.to_utc(start))
             db.add(b)
             db.flush()  # so the next _busy sees it
@@ -80,17 +94,17 @@ def samples(db, demo: bool):
     """Orders, table bookings and appointments, each only for a business that takes them."""
     menu = [i for i in db.scalars(select(MenuItem).where(MenuItem.minutes.is_(None))) if tools.in_stock(i)]
     ways = list(tools.fulfilment())
-    names = ["Olivia Chen", "Jack Wilson", "Priya Sharma", "Liam Nguyen", "Sophie Brown", "Noah Martin", "Mia Rossi"]
+    names = people()[0]
     now = hours.local_now()
     if not db.scalar(select(func.count(Order.id))) and not db.scalar(select(func.count(Booking.id))):
         if ways:
-            db.add_all([order(random.sample(menu, 2), now - timedelta(minutes=12), "new", ways[0], "Olivia Chen"),
-                        order(random.sample(menu, 1), now - timedelta(minutes=25), "preparing", ways[-1], "Jack Wilson"),
-                        order(random.sample(menu, 3), now - timedelta(days=1), "completed", ways[0], "Priya Sharma")])
+            db.add_all([order(random.sample(menu, 2), now - timedelta(minutes=12), "new", ways[0], names[0]),
+                        order(random.sample(menu, 1), now - timedelta(minutes=25), "preparing", ways[-1], names[1]),
+                        order(random.sample(menu, 3), now - timedelta(days=1), "completed", ways[0], names[2])])
         if tools.tables():
-            db.add(Booking(customer_name="Liam Nguyen", phone="0412345678", party_size=4, notes="High chair please",
+            db.add(Booking(customer_name=names[3], phone=phone(), party_size=4, notes="High chair please",
                            at=hours.to_utc(datetime.combine(now.date() + timedelta(days=1), time(12, 30)))))
-        for days, name in [(1, "Sophie Brown"), (1, "Noah Martin"), (2, "Mia Rossi")] if tools.appts() else ():
+        for days, name in [(1, names[4]), (1, names[5]), (2, names[6])] if tools.appts() else ():
             appointment(db, now.date() + timedelta(days=days), name)
         db.commit()
     if demo:
@@ -103,7 +117,7 @@ def samples(db, demo: bool):
                     db.add(order(random.sample(menu, random.choice([1, 2, 2, 3])), placed, status, random.choice(ways), random.choice(names)))
             for _ in range(random.randint(0, 4)) if tools.tables() else ():
                 at = datetime.combine(day + timedelta(days=random.randint(1, 7)), time(random.choice([9, 10, 12, 13])))
-                db.add(Booking(customer_name=random.choice(names), phone="0400000000", party_size=random.randint(2, 6),
+                db.add(Booking(customer_name=random.choice(names), phone=phone(), party_size=random.randint(2, 6),
                                at=hours.to_utc(at), created_at=hours.to_utc(datetime.combine(day, time(10))),
                                status="cancelled" if random.random() < 0.08 else "booked"))
             for _ in range(random.randint(3, 8)) if tools.appts() else ():

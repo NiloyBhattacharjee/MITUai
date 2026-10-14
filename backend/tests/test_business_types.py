@@ -159,6 +159,7 @@ def test_seed_fills_every_kind_of_business_and_never_double_books_a_person(db, b
     orders, bookings = db.scalars(select(Order)).all(), db.scalars(select(Booking)).all()
     cfg = tenancy.cfg()
     assert bool(orders) == ("fulfilment" in cfg)
+    assert {x.phone[:2] for x in orders + bookings} == ({"01"} if business == "shop" else {"04"})  # local numbers in Dhaka
     assert all(o.fulfilment in cfg["fulfilment"] and o.payment_method in cfg["payment_methods"] for o in orders)
     assert bool([b for b in bookings if not b.provider]) == ("reservations" in cfg)
     appointments = sorted((b for b in bookings if b.provider and b.status != "cancelled"), key=lambda b: (b.provider, b.at))
