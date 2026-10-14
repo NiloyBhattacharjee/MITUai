@@ -6,9 +6,10 @@ from pathlib import Path
 import pytest
 from conftest import add_cafe
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app import agent, hours, tenancy
-from app.db import Conversation
+from app.db import Booking, Conversation
 from app.main import app
 from app.tools import (Ctx, appointment_times, book_appointment, cancel_booking, cancel_order, create_order, find_item, my_bookings,
                        run_tool, specs, take_stock)
@@ -106,6 +107,17 @@ def test_salon_offers_free_times_and_never_double_books_a_person(db, salon, cloc
     assert "passed" in appointment_times(c, "S01", str(clock.date() - timedelta(days=1)))["problems"][0]
     assert all(t >= f"{clock:%H:%M}" for t in appointment_times(c, "S02", str(clock.date()))["free_times"])  # none before now
     assert "Unknown tool" in run_tool(c, "create_order", {})["error"]  # a salon doesn't take orders
+
+
+def test_salon_keeps_a_person_busy_while_their_customer_is_in_the_chair(db, salon, clock):
+    c = ctx(db, "bloom:sim-1")
+    day = clock.date() + timedelta(days=1)
+    (opens, _), = hours.periods(day)
+    book_appointment(c, "Zoe Park", "0412 345 678", "S05", str(day), f"{opens:%H:%M}", provider="Ava")
+    db.scalars(select(Booking)).one().status = "arrived"
+    db.commit()
+    half_past = f"{opens + timedelta(minutes=30):%H:%M}"
+    assert "error" in book_appointment(ctx(db, "bloom:sim-2"), "Sam Lee", "0412 000 222", "S02", str(day), half_past, provider="Ava")
 
 
 def test_prompt_only_describes_what_the_business_does(db, salon):
