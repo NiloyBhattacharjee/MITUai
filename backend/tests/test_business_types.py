@@ -148,6 +148,26 @@ def test_seed_never_adds_another_business_menu_to_the_first_one(db, cafe):
     assert seed.add_new_items(db, cafe, EXAMPLES / "cafe.yaml") == 0  # its own file: nothing new
 
 
+@pytest.mark.parametrize("business", ["cafe", "shop", "salon"])
+def test_seed_fills_every_kind_of_business_and_never_double_books_a_person(db, business, request):
+    import seed
+    from sqlalchemy import select
+
+    from app.db import Booking, Order
+    request.getfixturevalue(business)
+    seed.samples(db, demo=True)
+    orders, bookings = db.scalars(select(Order)).all(), db.scalars(select(Booking)).all()
+    cfg = tenancy.cfg()
+    assert bool(orders) == ("fulfilment" in cfg)
+    assert {x.phone[:2] for x in orders + bookings} == ({"01"} if business == "shop" else {"04"})  # local numbers in Dhaka
+    assert all(o.fulfilment in cfg["fulfilment"] and o.payment_method in cfg["payment_methods"] for o in orders)
+    assert bool([b for b in bookings if not b.provider]) == ("reservations" in cfg)
+    appointments = sorted((b for b in bookings if b.provider and b.status != "cancelled"), key=lambda b: (b.provider, b.at))
+    assert bool(appointments) == ("appointments" in cfg)
+    for a, b in zip(appointments, appointments[1:]):
+        assert a.provider != b.provider or a.at + timedelta(minutes=a.minutes) <= b.at, f"{a.provider} double-booked at {b.at}"
+
+
 def test_dashboard_words_fit_the_business(db, shop, salon):
     words = {pw: client.get("/api/business", headers={"X-Session": pw}).json()["labels"] for pw in ("pw", "shop-pw", "salon-pw")}
     assert words == {"pw": {"kitchen": "Kitchen", "menu": "Menu"}, "shop-pw": {"kitchen": "Packing", "menu": "Products"},
