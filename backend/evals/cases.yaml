@@ -368,7 +368,7 @@
   business: business.yaml
   turns:
     - say: "5 mustard embroidered kurtis in M please, delivery to Road 7, Banani. Nusrat Jahan, 01712 345678, cash on delivery"
-      reply: "only 3|3 left|three"
+      reply: "only (have )?3|3 (are )?left|three"
       orders: 0
 
 - name: "shop: takes an order for a later day"
