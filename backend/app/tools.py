@@ -498,7 +498,7 @@ def _appointment_at(date_s, time_s, errors: list) -> datetime | None:
 
 def _busy(db, provider: str, start: datetime, end: datetime) -> bool:
     """Whether the provider has an appointment overlapping start-end (local)."""
-    rows = db.scalars(select(Booking).where(Booking.provider == provider, Booking.status == "booked", Booking.at < hours.to_utc(end),
+    rows = db.scalars(select(Booking).where(Booking.provider == provider, Booking.status.in_(("booked", "arrived")), Booking.at < hours.to_utc(end),
                                             Booking.at > hours.to_utc(start - timedelta(days=1))))
     return any(hours.to_local(b.at) + timedelta(minutes=b.minutes or 0) > start for b in rows)
 
