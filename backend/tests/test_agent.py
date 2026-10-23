@@ -182,7 +182,6 @@ def test_owner_emailed_once_per_handoff(db, monkeypatch):
 
 def test_menu_photo_goes_out_on_whatsapp(db, fake_llm, graph):
     import json
-    from app.config import MEDIA_DIR
     from app.main import message_dict
     photo_folder().mkdir(parents=True, exist_ok=True)
     (photo_folder() / "M01.jpg").write_bytes(b"JPEGDATA")

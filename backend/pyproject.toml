@@ -1,0 +1,8 @@
+[tool.ruff]
+line-length = 140
+
+[tool.ruff.lint]
+# pyflakes + pycodestyle, named explicitly so a ruff upgrade doesn't change the rule set.
+# E501 off: the long lines are prompt text in agent.py and tool descriptions, which read better unwrapped.
+select = ["E", "F", "W"]
+ignore = ["E501"]
