@@ -166,7 +166,7 @@ On items, `stock: 12` makes the assistant count them down (it never sells more t
 
 `.github/workflows/ci-cd.yml` runs on every push and pull request:
 
-1. **Backend tests** (`pytest`, fake LLM and mocked Meta API, so no secrets needed) and **frontend build**.
+1. **Backend lint and tests** (`ruff check .`, then `pytest`, fake LLM and mocked Meta API, so no secrets needed) and **frontend build**.
 2. On `main` only: builds the backend and frontend Docker images and pushes them to GitHub Container Registry
    (`ghcr.io/<owner>/<repo>-backend` / `-frontend`, tagged `latest` and the commit SHA).
 3. Deploys them over SSH with `docker compose pull && up -d`, once these repository secrets exist

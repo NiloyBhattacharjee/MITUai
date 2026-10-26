@@ -9,11 +9,12 @@ the layout and the **Decisions** section before changing behaviour; don't redo a
 
 ```bash
 cd backend && .venv/Scripts/python -m pytest -q   # ~15 s, no credentials (fake LLM, mocked Meta API). Linux/mac: .venv/bin/python
+cd backend && .venv/Scripts/python -m ruff check .   # lint: pyflakes + pycodestyle, config in backend/pyproject.toml
 cd frontend && npm run build                       # the only frontend check CI runs
 cd backend && .venv/Scripts/python eval.py <word>  # real LLM, costs money: only when asked, or after prompt/tool/model changes
 ```
 
-CI (`.github/workflows/ci-cd.yml`) runs exactly the first two. Run them before calling a change done, and show the output.
+CI (`.github/workflows/ci-cd.yml`) runs exactly the first three. Run them before calling a change done, and show the output.
 
 ## Rules that protect real data
 
