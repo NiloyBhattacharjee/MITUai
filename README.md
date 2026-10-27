@@ -55,8 +55,8 @@ cd backend
 python -m venv .venv
 .venv/bin/pip install -r requirements.txt        # Windows: .venv\Scripts\pip
 .venv/bin/python seed.py                         # creates the first business (SHOP_ID) from business.yaml and .env,
-                                                 # with a few sample orders and a booking (café only for now: issue #8)
-                                                 # (add --demo for 60 days of fake orders and bookings to fill the Overview)
+                                                 # with a few sample orders, bookings or appointments, whichever it takes
+                                                 # (add --demo for 60 days of fake ones to fill the Overview)
 .venv/bin/python cli.py 0412345678               # optional: chat with the first business's agent in the terminal
 .venv/bin/uvicorn app.main:app --reload --port 8000
 
@@ -166,7 +166,7 @@ On items, `stock: 12` makes the assistant count them down (it never sells more t
 
 `.github/workflows/ci-cd.yml` runs on every push and pull request:
 
-1. **Backend tests** (`pytest`, fake LLM and mocked Meta API, so no secrets needed) and **frontend build**.
+1. **Backend lint and tests** (`ruff check .`, then `pytest`, fake LLM and mocked Meta API, so no secrets needed) and **frontend build**.
 2. On `main` only: builds the backend and frontend Docker images and pushes them to GitHub Container Registry
    (`ghcr.io/<owner>/<repo>-backend` / `-frontend`, tagged `latest` and the commit SHA).
 3. Deploys them over SSH with `docker compose pull && up -d`, once these repository secrets exist

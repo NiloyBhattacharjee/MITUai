@@ -6,9 +6,10 @@ from pathlib import Path
 import pytest
 from conftest import add_cafe
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app import agent, hours, tenancy
-from app.db import Conversation, Setting
+from app.db import Booking, Conversation, Setting
 from app.main import app
 from app.tools import (Ctx, appointment_times, book_appointment, cancel_booking, cancel_order, create_order, find_item, my_bookings,
                        run_tool, specs, take_stock)
@@ -108,6 +109,17 @@ def test_salon_offers_free_times_and_never_double_books_a_person(db, salon, cloc
     assert "Unknown tool" in run_tool(c, "create_order", {})["error"]  # a salon doesn't take orders
 
 
+def test_salon_keeps_a_person_busy_while_their_customer_is_in_the_chair(db, salon, clock):
+    c = ctx(db, "bloom:sim-1")
+    day = clock.date() + timedelta(days=1)
+    (opens, _), = hours.periods(day)
+    book_appointment(c, "Zoe Park", "0412 345 678", "S05", str(day), f"{opens:%H:%M}", provider="Ava")
+    db.scalars(select(Booking)).one().status = "arrived"
+    db.commit()
+    half_past = f"{opens + timedelta(minutes=30):%H:%M}"
+    assert "error" in book_appointment(ctx(db, "bloom:sim-2"), "Sam Lee", "0412 000 222", "S02", str(day), half_past, provider="Ava")
+
+
 def test_prompt_only_describes_what_the_business_does(db, salon):
     prompt = agent.system_prompt(False)
     assert "Appointments:" in prompt and "hair and beauty salon" in prompt
@@ -146,6 +158,26 @@ def test_seed_never_adds_another_business_menu_to_the_first_one(db, cafe):
     assert seed.add_new_items(db, cafe, EXAMPLES.parent / "business.yaml") is None  # the shop's file, but this is the café
     assert not find_item(db, "P01")
     assert seed.add_new_items(db, cafe, EXAMPLES / "cafe.yaml") == 0  # its own file: nothing new
+
+
+@pytest.mark.parametrize("business", ["cafe", "shop", "salon"])
+def test_seed_fills_every_kind_of_business_and_never_double_books_a_person(db, business, request):
+    import seed
+    from sqlalchemy import select
+
+    from app.db import Booking, Order
+    request.getfixturevalue(business)
+    seed.samples(db, demo=True)
+    orders, bookings = db.scalars(select(Order)).all(), db.scalars(select(Booking)).all()
+    cfg = tenancy.cfg()
+    assert bool(orders) == ("fulfilment" in cfg)
+    assert {x.phone[:2] for x in orders + bookings} == ({"01"} if business == "shop" else {"04"})  # local numbers in Dhaka
+    assert all(o.fulfilment in cfg["fulfilment"] and o.payment_method in cfg["payment_methods"] for o in orders)
+    assert bool([b for b in bookings if not b.provider]) == ("reservations" in cfg)
+    appointments = sorted((b for b in bookings if b.provider and b.status != "cancelled"), key=lambda b: (b.provider, b.at))
+    assert bool(appointments) == ("appointments" in cfg)
+    for a, b in zip(appointments, appointments[1:]):
+        assert a.provider != b.provider or a.at + timedelta(minutes=a.minutes) <= b.at, f"{a.provider} double-booked at {b.at}"
 
 
 def test_dashboard_words_fit_the_business(db, shop, salon):

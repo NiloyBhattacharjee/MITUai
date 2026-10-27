@@ -2,10 +2,11 @@
 
     python eval.py                  every case
     python eval.py cancel booking   only cases whose name contains one of the words
+    python eval.py salon            the salon's cases (shop: the shop's); the rest run on the café
 
 It uses LLM_PROVIDER and the keys from .env, so it costs real money: roughly $1-3 for all cases on Sonnet, about
 double on Opus, free on Ollama. Each case runs on its own throwaway database (your shop.db is never touched) and no
-emails are sent. The café's clock is set to 10:00 (open every day) whenever you run it. Checks are deterministic:
+emails are sent. The business's clock is set to 10:00 whenever you run it. Checks are deterministic:
 which tools were called, what's in the database, regexes on the reply. Exits 1 if any case fails.
 """
 import os
@@ -32,7 +33,8 @@ PHONE = "0412345678"
 CAFE = "eval-cafe"
 CONV = f"{CAFE}:sim-{PHONE}"
 TURN_KEYS = {"say", "calls", "no_calls", "reply", "no_reply", "orders", "bookings"}
-CASE_KEYS = {"name", "turns", "setup_order", "setup_booking", "then"}
+CASE_KEYS = {"name", "business", "turns", "setup_order", "setup_booking", "then"}
+CAFE_FILE = "examples/cafe.yaml"  # a case's business unless it names another
 THEN_KEYS = {"needs_human", "called", "called_any", "order", "booking", "approvals"}
 
 
@@ -49,11 +51,11 @@ def load_cases(words: list[str] = ()) -> list[dict]:
 
 
 def fresh_db(case: dict):
-    """A throwaway database with the café from examples/cafe.yaml (the cases are written for its menu); returns it."""
+    """A throwaway database with the case's business (the café unless it says `business:`); returns it."""
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     with Session() as db:
-        shop = shops.create(db, CAFE, shops.read(ROOT / "examples" / "cafe.yaml"), {})
+        shop = shops.create(db, CAFE, shops.read(ROOT / case.get("business", CAFE_FILE)), {})
     with tenancy.scope(shop), Session() as db:
         tools.photo_folder().mkdir(parents=True, exist_ok=True)
         (tools.photo_folder() / "M01.jpg").write_bytes(b"JPEG")  # so send_item_photo has something to send

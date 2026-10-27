@@ -9,3 +9,4 @@ boto3
 anthropic>=1.13  # fallbacks= in llm.py; older SDKs raise TypeError
 tzdata
 pytest
+ruff  # CI lint: ruff check .
