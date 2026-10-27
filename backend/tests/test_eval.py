@@ -1,5 +1,8 @@
 import re
 
+import pytest
+
+import compare_models
 import eval as harness
 from app.config import ROOT
 from app.db import APPROVAL_KINDS, Booking, Order
@@ -46,3 +49,15 @@ def test_eval_case_runs_on_its_own_business(fake_llm):
     assert harness.run_case(case)[0] == []
     assert {c["business"] for c in harness.load_cases(["salon"])} == {"examples/salon.yaml"}
     assert {c["business"] for c in harness.load_cases(["shop"])} == {"business.yaml"}
+
+
+def test_compare_models_reads_model_names_and_lists_the_cases_one_model_failed():
+    assert compare_models.env_for("ollama:qwen3:4b") == {"LLM_PROVIDER": "ollama", "OLLAMA_MODEL": "qwen3:4b"}
+    assert compare_models.env_for("anthropic:claude-sonnet-5-5")["ANTHROPIC_MODEL"] == "claude-sonnet-5-5"
+    with pytest.raises(SystemExit):
+        compare_models.env_for("openai:gpt")
+    case = lambda name, ok, cost: {"name": name, "passed": ok, "cost_usd": cost, "seconds": 4.0, "turns": 2}  # noqa: E731
+    report = compare_models.table({"a:big": [case("greets", True, 0.02), case("orders", True, 0.04)],
+                                   "b:small": [case("greets", True, 0.0), case("orders", False, 0.0)]})
+    assert "| a:big | 2/2 | $0.06 | $0.030 | 2.0 |" in report and "| b:small | 1/2 | $0.00 |" in report
+    assert "| orders | pass | **fail** |" in report and "| greets |" not in report

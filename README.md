@@ -39,7 +39,7 @@ backend/
   app/voice.py         speech-to-text / text-to-speech (OpenAI, Amazon Transcribe), ffmpeg helpers
   app/main.py          FastAPI: dashboard + simulator API
   manage.py            add businesses and staff, connect their WhatsApp number and Facebook Page
-  seed.py  cli.py  eval.py  backup.py  compare_stt.py  tests/  evals/
+  seed.py  cli.py  eval.py  compare_models.py  backup.py  compare_stt.py  tests/  evals/
 frontend/              React + Vite + Tailwind (dashboard + simulator), served by Caddy in Docker
 ```
 
@@ -76,11 +76,17 @@ Run the tests (no credentials needed, the LLM and Graph API are mocked, and the 
 cd backend && .venv/bin/python -m pytest
 ```
 
-The tests use a fake LLM, so they can't tell you whether the real model behaves. The eval does: 35 scripted customer conversations in `backend/evals/cases.yaml`, on the café in `examples/cafe.yaml` (shop and salon cases are issue #6) (menu questions, allergies, ordering, required options, closing time, cancelling, bookings, refunds and big groups going to the team, complaints, prompt injection, …) run against the real model from `.env`. Each runs on a throwaway database at 10:00 café time, checking which tools were called, what ended up in the database, and the replies. Run it after changing the prompt, the tools, the menu format or the model. It costs roughly $1–3 per full run on Sonnet (about double on Opus, free on Ollama):
+The tests use a fake LLM, so they can't tell you whether the real model behaves. The eval does: 51 scripted customer conversations in `backend/evals/cases.yaml`, mostly on the café in `examples/cafe.yaml`, plus the shop and the salon (menu questions, allergies, ordering, required options, closing time, cancelling, bookings, refunds and big groups going to the team, complaints, prompt injection, …) run against the real model from `.env`. Each runs on a throwaway database at 10:00 café time, checking which tools were called, what ended up in the database, and the replies. Run it after changing the prompt, the tools, the menu format or the model. It costs roughly $1–3 per full run on Sonnet (about double on Opus, free on Ollama):
 
 ```bash
 cd backend && .venv/bin/python eval.py              # all cases; exit code 1 if any fail
 .venv/bin/python eval.py booking cancel             # only cases whose name contains a word
+```
+
+To pick a model, run the same cases on several and compare. It prints pass rate, cost and seconds per customer turn for each model, then every case one of them failed, and saves the table in `backend/evals/results/` (commit them to keep a record of what changed):
+
+```bash
+.venv/bin/python compare_models.py anthropic:claude-sonnet-5-5 anthropic:claude-haiku-4-5 ollama:qwen3:4b
 ```
 
 Models vary from run to run, so a single failure is worth reading (the transcript is printed) before you change anything. Add a case whenever a real chat goes wrong.
