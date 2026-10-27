@@ -59,6 +59,14 @@ messages:
   large_booking_approved: "Good news: your table for {party_size} on {when} is booked (booking #{booking_id}). {note}"
 
 # Quick replies staff can insert in the dashboard's chat box.
+try_messages:
+  - {topic: Menu and price, text: "How much is a large oat flat white?"}
+  - {topic: Place an order, text: "Can I order a smashed avo with a poached egg for pickup asap?"}
+  - {topic: Book a table, text: "Table for 4 tomorrow at 12:30?"}
+  - {topic: Dietary, text: "What vegan breakfast do you have?"}
+  - {topic: Opening hours, text: "Are you open on Sunday afternoon?"}
+  - {topic: Human handoff, text: "I want to talk to a real person"}
+
 saved_replies:
   - "Thanks for your patience! We're looking into it now."
   - "Sorry about that! We'll make it right. Could you tell us a bit more about what happened?"

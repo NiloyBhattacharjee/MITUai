@@ -70,7 +70,7 @@ def _keywords(i: MenuItem) -> set[str]:
 
 
 def find_item(db, code) -> MenuItem | None:
-    """A menu item of the café in scope by its code (M01)."""
+    """An item of the business in scope by its code (M01)."""
     return db.scalar(select(MenuItem).where(MenuItem.id == str(code)))
 
 
@@ -202,7 +202,7 @@ def _ready_at(when, errors: list) -> datetime | None:
 
 def _validate(ctx: Ctx, a: dict) -> tuple[dict | None, list[str]]:
     if orders_paused(ctx.db):
-        return None, ["Online orders are paused right now (the kitchen is busy). Offer to take a table booking, or try again later."]
+        return None, ["Online orders are paused right now. " + ("Offer to take a table booking, or try again later." if tables() else "Ask them to try again later.")]
     errors, lines = [], []
     for it in a.get("items") or []:
         i = find_item(ctx.db, it.get("item_id", ""))
@@ -333,7 +333,7 @@ def cancel_order(ctx: Ctx, order_id: int) -> dict:
     if not o:
         return {"error": f"No order #{order_id} was placed in this chat."}
     if o.status != "new":
-        return {"error": f"Order #{o.id} is {o.status}: the kitchen has already started it, so it can't be cancelled here.",
+        return {"error": f"Order #{o.id} is {o.status}: we've already started on it, so it can't be cancelled here.",
                 "instruction": "Offer to connect a person."}
     o.status = "cancelled"
     take_stock(ctx.db, o.items, back=True)
@@ -601,7 +601,7 @@ def request_approval(ctx: Ctx, kind: str, summary: str, order_id: int | None = N
             "instruction": "Tell the customer the team will check and reply here soon. Don't promise the outcome."}
 
 
-# --- the café -----------------------------------------------------------------------------------
+# --- the business -------------------------------------------------------------------------------
 
 def topics() -> list[str]:
     """What get_business_info can tell, given what this business does."""
@@ -656,7 +656,7 @@ _id = {"type": "object", "properties": {"item_id": {"type": "string"}}, "require
 _line = {"type": "object", "properties": {
     "item_id": {"type": "string"}, "quantity": {"type": "integer"},
     "options": {"type": "array", "items": {"type": "string"}, "description": "Choice names, e.g. [\"Large\", \"Oat\"]"},
-    "notes": {"type": "string", "description": "Kitchen notes the customer asked for, e.g. extra hot"}},
+    "notes": {"type": "string", "description": "What the customer asked for on this item, e.g. extra hot, gift wrap"}},
     "required": ["item_id", "quantity"]}
 _when = {"date": {"type": "string", "description": "YYYY-MM-DD"}, "time": {"type": "string", "description": "HH:MM, 24-hour"},
          "party_size": {"type": "integer"}}

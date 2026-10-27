@@ -1,8 +1,8 @@
 """Create the first business from .env and business.yaml if the database has none, then add sample orders and a booking.
 Usage: python seed.py              (the first business if missing, new menu items from business.yaml, samples if it has no orders)
-       python seed.py --if-empty   (only create the first café, with samples, if there are no cafés; used by docker-compose)
+       python seed.py --if-empty   (only create the first business, with samples, if there are no businesses; used by docker-compose)
        python seed.py --demo       (also ~60 days of random orders and bookings, to see the Overview filled in)
-       python seed.py --shop ID    (samples for another café; add cafés with manage.py)
+       python seed.py --shop ID    (samples for another business; add businesses with manage.py)
 """
 import random
 import sys

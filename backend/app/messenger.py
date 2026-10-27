@@ -51,7 +51,7 @@ async def receive(request: Request, background: BackgroundTasks):
     channel = CHANNELS.get(data.get("object"))
     for entry in data.get("entry", []) if channel else []:
         if not (shop := whatsapp.shop_for(ID_COLUMN[channel], entry.get("id"))):
-            log.warning("%s message for %s, which no café is connected to", channel, entry.get("id"))
+            log.warning("%s message for %s, which no business is connected to", channel, entry.get("id"))
             continue
         for event in entry.get("messaging", []):
             msg = event.get("message")

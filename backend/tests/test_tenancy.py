@@ -77,7 +77,7 @@ def test_ai_steps_of_another_cafe_stay_hidden(db, harbour):
 
 
 def test_queries_without_a_cafe_in_scope_fail_instead_of_seeing_everything(db):
-    with Session() as fresh, tenancy.scope(None), pytest.raises(RuntimeError, match="No café in scope"):
+    with Session() as fresh, tenancy.scope(None), pytest.raises(RuntimeError, match="No business in scope"):
         fresh.scalar(select(func.count(Order.id)))
     with Session() as fresh:  # cafés and staff themselves aren't scoped
         assert fresh.scalar(select(func.count(Shop.id))) == 1 and fresh.scalar(select(func.count(Staff.id))) == 3

@@ -325,7 +325,7 @@ export function Kitchen({ title = 'Kitchen' }) {
     setSettings({ orders_paused })
     try {
       await api('/api/settings', { method: 'PUT', body: JSON.stringify({ orders_paused }) })
-      toast(orders_paused ? 'Orders paused: the assistant takes bookings and answers questions, but no orders.' : 'Taking orders again.')
+      toast(orders_paused ? 'Orders paused: the assistant still answers questions, but takes no orders.' : 'Taking orders again.')
     } catch {
       setSettings({ orders_paused: !orders_paused })
       toast('Could not change it. Try again.')
@@ -398,7 +398,7 @@ export function Bookings() {
     <>
       <PageHeader title="Bookings" sub="Tables and appointments the assistant booked for the next two weeks. Cancelling tells the customer." />
       {!rows && <Skeleton className="h-48 rounded-2xl!" />}
-      {rows?.length === 0 && <div className="card"><Empty icon="bookings" title="No bookings yet">Customers can book a table in any chat.</Empty></div>}
+      {rows?.length === 0 && <div className="card"><Empty icon="bookings" title="No bookings yet">Customers can book in any chat.</Empty></div>}
       <div className="space-y-6">
         {days.map((d) => {
           const covers = d.rows.filter((b) => b.status !== 'cancelled').reduce((n, b) => n + b.party_size, 0)
@@ -569,7 +569,7 @@ export function Menu({ title = 'Menu' }) {
 
       <div className="relative mb-6 max-w-sm">
         <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-faint"><Icon name="search" className="w-4 h-4" /></span>
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search the menu" aria-label="Search the menu" className="field pl-10!" />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search ${title.toLowerCase()}`} aria-label={`Search ${title.toLowerCase()}`} className="field pl-10!" />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -600,7 +600,7 @@ export function Menu({ title = 'Menu' }) {
       {items && shown.length === 0 && <Empty icon="menu" title={q ? 'Nothing matches' : 'Nothing here yet'}>{q ? 'Try another name or category.' : 'Add your first item to start taking orders.'}</Empty>}
 
       {open === 'new' && (
-        <Drawer title="New menu item" sub="You can add a photo right after." onClose={close}>
+        <Drawer title="New item" sub="You can add a photo right after." onClose={close}>
           <ItemForm categories={categories} onCancel={close}
             onSaved={(i) => { setItems([...(items || []), i]); setOpen(i.id); toast(`${i.name} added.`) }} />
         </Drawer>
@@ -672,20 +672,20 @@ function ItemForm({ item, categories, onSaved, onCancel }) {
   )
   return (
     <form onSubmit={submit} className="grid sm:grid-cols-2 gap-4">
-      <div className="sm:col-span-2">{field('name', 'Name', { required: true, placeholder: 'Iced Mocha', autoFocus: !item })}</div>
-      {field('category', 'Category', { required: true, list: 'categories', placeholder: 'coffee' })}
+      <div className="sm:col-span-2">{field('name', 'Name', { required: true, placeholder: 'Indigo Block-print Kurti', autoFocus: !item })}</div>
+      {field('category', 'Category', { required: true, list: 'categories', placeholder: 'kurti' })}
       <datalist id="categories">{categories.map((c) => <option key={c} value={c} />)}</datalist>
       {field('price', 'Price', { required: true, type: 'number', min: 0.01, step: 0.01, inputMode: 'decimal' })}
-      {area('description', 'Description', { rows: 2, placeholder: 'Double shot, chocolate, cold milk and ice.' })}
-      {area('options', 'Options', { rows: 4, placeholder: 'Size*: Regular, Large +0.80\nMilk: Full cream, Oat +0.80\nExtras (any): Extra shot +0.60' },
-        'One group per line. * = the customer must pick one, (any) = they can pick several, +0.80 = extra cost.')}
-      {field('dietary', 'Dietary', { placeholder: 'vegetarian, gluten-free' }, 'The assistant only repeats what you write here.')}
+      {area('description', 'Description', { rows: 2, placeholder: 'Cotton, hand block-printed, three-quarter sleeves.' })}
+      {area('options', 'Options', { rows: 4, placeholder: 'Size*: S, M, L, XL +100\nColour: Red, Green\nExtras (any): Gift wrap +50' },
+        'One group per line. * = the customer must pick one, (any) = they can pick several, +100 = extra cost.')}
+      {field('dietary', 'Dietary', { placeholder: 'vegan, gluten-free' }, 'The assistant only repeats what you write here.')}
       {field('allergens', 'Allergens', { placeholder: 'milk, nuts' })}
       {field('stock', 'How many are left', { type: 'number', min: 0, step: 1, inputMode: 'numeric', placeholder: 'not counted' },
         'Optional. The assistant won\'t sell more; cancelled orders put them back.')}
       {field('minutes', 'Appointment length (minutes)', { type: 'number', min: 5, step: 5, inputMode: 'numeric', placeholder: 'not a service' },
         'Only for services customers book a time for.')}
-      <div className="sm:col-span-2">{field('aliases', 'Other names customers use', { placeholder: 'mocha, iced coffee' }, 'Optional. Helps the assistant find it.')}</div>
+      <div className="sm:col-span-2">{field('aliases', 'Other names customers use', { placeholder: 'blue kurti, kurta' }, 'Optional. Helps the assistant find it.')}</div>
       {error && <p role="alert" className="sm:col-span-2 text-sm text-danger">{error}</p>}
       <div className="sm:col-span-2 flex justify-end gap-2 pt-1">
         <button type="button" onClick={onCancel} className="btn btn-ghost">Cancel</button>

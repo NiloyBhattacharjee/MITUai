@@ -1,4 +1,4 @@
-"""Run the cafés on this install.
+"""Run the businesses on this install.
 
     python manage.py list
     python manage.py add-shop ID business.yaml --owner-password PASSWORD
@@ -7,7 +7,7 @@
     python manage.py connect ID [--whatsapp-number-id X] [--whatsapp-token T] [--page-id P] [--instagram-id I] [--page-token T]
 
 ID is the short name staff type to sign in, e.g. little-fern. connect stores the ids Meta sends with each webhook, so
-messages reach the right café, and the tokens to reply with.
+messages reach the right business, and the tokens to reply with.
 """
 import argparse
 import re

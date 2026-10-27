@@ -8,7 +8,7 @@ from conftest import add_cafe
 from fastapi.testclient import TestClient
 
 from app import agent, hours, tenancy
-from app.db import Conversation
+from app.db import Conversation, Setting
 from app.main import app
 from app.tools import (Ctx, appointment_times, book_appointment, cancel_booking, cancel_order, create_order, find_item, my_bookings,
                        run_tool, specs, take_stock)
@@ -152,3 +152,10 @@ def test_dashboard_words_fit_the_business(db, shop, salon):
     words = {pw: client.get("/api/business", headers={"X-Session": pw}).json()["labels"] for pw in ("pw", "shop-pw", "salon-pw")}
     assert words == {"pw": {"kitchen": "Kitchen", "menu": "Menu"}, "shop-pw": {"kitchen": "Packing", "menu": "Products"},
                      "salon-pw": {"kitchen": "Kitchen", "menu": "Services"}}
+
+
+def test_paused_shop_is_not_told_to_offer_a_table(db, shop, clock):
+    db.add(Setting(key="orders_paused", value=True))
+    db.commit()
+    problem = create_order(ctx(db, "nakshi:sim-1"), False, **order(next_day(clock, friday=False)))["problems"][0]
+    assert "paused" in problem and "table" not in problem and "kitchen" not in problem

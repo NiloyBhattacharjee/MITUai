@@ -80,10 +80,10 @@ def _image(path: str) -> list[dict]:
 
 
 def build_history(messages: list[Message]) -> list[dict]:
-    """Staff replies count as the café (assistant). Merge consecutive same-role turns; start with the user.
+    """Staff replies count as the business (assistant). Merge consecutive same-role turns; start with the user.
     Customer messages get their local send time, so the model knows what "today" and "in 20 minutes" mean
     (it's part of the stored message, so the cached prompt prefix stays the same from turn to turn).
-    The customer's own photos go to the LLM as images; the menu photos the café sent stay a text note."""
+    The customer's own photos go to the LLM as images; the menu photos the business sent stay a text note."""
     out = []
     for m in messages:
         role = "user" if m.role == "user" else "assistant"

@@ -44,8 +44,8 @@ async def lifespan(app):
 
 
 class SignedIn:
-    """ASGI middleware: an /api request with a live session runs in that café's scope (see tenancy.py),
-    so every query in it only sees that café's rows."""
+    """ASGI middleware: an /api request with a live session runs in that business's scope (see tenancy.py),
+    so every query in it only sees that business's rows."""
 
     def __init__(self, app):
         self.app = app
@@ -90,7 +90,7 @@ _wrong: dict[str, list[float]] = {}  # client IP -> times of recent wrong passwo
 
 
 class Login(BaseModel):
-    shop: str = Field(min_length=1, max_length=40)  # the café's ID, e.g. little-fern
+    shop: str = Field(min_length=1, max_length=40)  # the business's ID, e.g. little-fern
     password: str = Field(min_length=1, max_length=200)
 
 
@@ -118,7 +118,7 @@ def logout(x_session: str = Header("")):
 
 
 def signed_in() -> str:
-    """The signed-in person's name (the middleware set the café and the person from the session)."""
+    """The signed-in person's name (the middleware set the business and the person from the session)."""
     if (who := tenancy.staff()) is None:
         raise HTTPException(401, "Sign in first")
     return who
@@ -137,7 +137,8 @@ def business():
     c = cfg()
     return {"id": tenancy.shop_id(), "name": c["name"], "agent_name": c["agent_name"], "currency": c.get("currency", "$"),
             # which dashboard pages apply: a salon has no kitchen, a shop no table bookings
-            "orders": tools.sells(), "tables": tools.tables(), "appointments": bool(tools.appts()), "labels": labels()}
+            "orders": tools.sells(), "tables": tools.tables(), "appointments": bool(tools.appts()), "labels": labels(),
+            "try_messages": c.get("try_messages", [])}
 
 
 def labels() -> dict:
@@ -149,8 +150,8 @@ def labels() -> dict:
 
 # --- simulator (signed in only: every message runs the paid LLM and can place real orders) ------
 
-def in_this_cafe(fn, *args):
-    """A background job that runs in the café the request came from."""
+def in_this_business(fn, *args):
+    """A background job that runs in the business the request came from."""
     shop = tenancy.shop()
 
     def run():
@@ -170,7 +171,7 @@ class SimMessage(BaseModel):
 
 @app.post("/api/sim/message", dependencies=[dash])
 def sim_message(body: SimMessage, background: BackgroundTasks):
-    background.add_task(in_this_cafe(pipeline.handle_text, sim_id(body.phone), "sim", body.phone, body.text))
+    background.add_task(in_this_business(pipeline.handle_text, sim_id(body.phone), "sim", body.phone, body.text))
     return {"ok": True}
 
 
@@ -181,7 +182,7 @@ async def sim_voice(background: BackgroundTasks, phone: str = Form(min_length=3,
         raise HTTPException(400, "empty or too large")
     ext = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/mpeg": "mp3"}.get(
         (file.content_type or "").split(";")[0], "webm")
-    background.add_task(in_this_cafe(pipeline.handle_voice, sim_id(phone), "sim", phone, data, ext))
+    background.add_task(in_this_business(pipeline.handle_voice, sim_id(phone), "sim", phone, data, ext))
     return {"ok": True}
 
 
@@ -191,7 +192,7 @@ async def sim_photo(background: BackgroundTasks, phone: str = Form(min_length=3,
     data = await file.read()
     if not data or len(data) > 5_000_000:
         raise HTTPException(400, "empty or too large")
-    background.add_task(in_this_cafe(pipeline.handle_photo, sim_id(phone), "sim", phone, data, file.content_type or "", caption))
+    background.add_task(in_this_business(pipeline.handle_photo, sim_id(phone), "sim", phone, data, file.content_type or "", caption))
     return {"ok": True}
 
 
@@ -395,7 +396,7 @@ def booking_row(b: Booking) -> dict:
 
 @app.get("/api/bookings", dependencies=[dash])
 def bookings(days: int = Query(14, ge=1, le=90)):
-    """Bookings from the start of today (café time) for the next `days` days."""
+    """Bookings from the start of today (business time) for the next `days` days."""
     start = hours.to_utc(datetime.combine(hours.local_now().date(), time()))
     with Session() as db:
         rows = db.scalars(select(Booking).where(Booking.at >= start, Booking.at < start + timedelta(days=days)).order_by(Booking.at))
@@ -611,7 +612,7 @@ def _count(pairs, labels: dict | None = None, top: int | None = None) -> list[di
 
 @app.get("/api/analytics", dependencies=[dash])
 def analytics(days: int = Query(30, ge=1, le=365)):
-    # ponytail: aggregates in Python over the period's orders, fine for a small café; move to SQL GROUP BY past ~100k orders.
+    # ponytail: aggregates in Python over the period's orders, fine for a small business; move to SQL GROUP BY past ~100k orders.
     first = hours.local_now().date() - timedelta(days=days - 1)
     utc = lambda d: hours.to_utc(datetime.combine(d, time()))  # noqa: E731
     start, end = utc(first), utc(first + timedelta(days=days))

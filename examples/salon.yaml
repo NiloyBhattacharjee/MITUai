@@ -39,6 +39,13 @@ messages:
   approval_approved: "Good news: the team approved your request ({summary}). {note}"
   approval_declined: "Sorry, the team couldn't approve your request ({summary}). {note}"
 
+try_messages:
+  - {topic: Services and price, text: "How much is a women's cut and blow-dry?"}
+  - {topic: Book an appointment, text: "Can I get a haircut on Saturday morning?"}
+  - {topic: A particular person, text: "Is Mei free for colour next week?"}
+  - {topic: Opening hours, text: "Are you open on Sunday?"}
+  - {topic: Human handoff, text: "I want to talk to a real person"}
+
 saved_replies:
   - "Thanks for your patience! Let me check the book for you."
   - "We'd love to see you again. Would you like to book your next appointment?"

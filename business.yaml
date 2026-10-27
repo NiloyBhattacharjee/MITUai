@@ -45,6 +45,15 @@ messages:
   approval_approved: "Good news: the team approved your request ({summary}). {note}"
   approval_declined: "Sorry, the team couldn't approve your request ({summary}). {note}"
 
+# Example messages the dashboard's chat simulator offers.
+try_messages:
+  - {topic: Price and stock, text: "Is the mustard kurti available in M? How much?"}
+  - {topic: Place an order, text: "I want the indigo kurti in L, delivery to Banani, cash on delivery"}
+  - {topic: Delivery, text: "What's the delivery charge outside Dhaka?"}
+  - {topic: Payment, text: "Can I pay with bKash?"}
+  - {topic: Sold out, text: "Do you have the men's panjabi in 42?"}
+  - {topic: Human handoff, text: "I want to talk to a real person"}
+
 saved_replies:
   - "Thanks for your order! We'll confirm as soon as the bKash payment arrives."
   - "Your parcel is with the courier and should reach you soon."

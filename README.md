@@ -156,7 +156,7 @@ What a business does follows from the sections in its settings file, and the ass
 | `reservations` | table bookings |
 | `appointments` | services by appointment with named staff (`providers`), for items that have `minutes` |
 
-On items, `stock: 12` makes the assistant count them down (it never sells more than are left, and a cancelled order puts them back), and `orders_days_ahead: 7` lets customers order for a later day. `kind: a hair and beauty salon` is how the assistant describes the business. `labels` renames dashboard pages (`menu: Catalogue`). `business.yaml` is a working shop; `examples/cafe.yaml` and `examples/salon.yaml` are the others.
+On items, `stock: 12` makes the assistant count them down (it never sells more than are left, and a cancelled order puts them back), and `orders_days_ahead: 7` lets customers order for a later day. `kind: a hair and beauty salon` is how the assistant describes the business. `labels` renames dashboard pages (`menu: Catalogue`), and `try_messages` are the examples the chat simulator offers. `business.yaml` is a working shop; `examples/cafe.yaml` and `examples/salon.yaml` are the others.
 
 ```bash
 .venv/bin/python manage.py add-shop bloom ../examples/salon.yaml --owner-password 'a-long-password'

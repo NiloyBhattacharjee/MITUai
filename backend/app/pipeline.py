@@ -162,7 +162,7 @@ MIME_EXT = {"audio/ogg": "ogg", "audio/mpeg": "mp3", "audio/mp4": "m4a", "audio/
 
 
 def handle_whatsapp_message(shop, msg: dict):
-    """A WhatsApp message sent to this café's number."""
+    """A WhatsApp message sent to this business's number."""
     phone = msg["from"]
     conv_id = f"{shop.id}:{phone}"
     with tenancy.scope(shop):
@@ -187,7 +187,7 @@ def handle_whatsapp_message(shop, msg: dict):
 
 
 def handle_meta_event(shop, channel: str, event: dict):
-    """A Messenger or Instagram message to this café's Page. The sender id (PSID/IGSID) is the only identity;
+    """A Messenger or Instagram message to this business's Page. The sender id (PSID/IGSID) is the only identity;
     Mitu asks for a phone number when ordering."""
     sender, msg = event["sender"]["id"], event["message"]
     conv_id = f"{shop.id}:{channel}-{sender}"
