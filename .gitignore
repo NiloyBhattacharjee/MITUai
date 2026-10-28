@@ -20,3 +20,8 @@ __pycache__/
 .pytest_cache/
 node_modules/
 dist/
+
+# Local AI-agent settings and installed skills
+.agents/
+.claude/
+skills-lock.json
