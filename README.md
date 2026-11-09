@@ -897,3 +897,13 @@ flowchart TD
 ```
 
 The breakdowns below go from the middle out: the message path first, then the data layer, the edges and the tooling.
+
+#### `pipeline.py`: one path for every message
+
+[`backend/app/pipeline.py`](backend/app/pipeline.py)
+
+- **Owns:** turning an incoming event into an agent turn and a sent reply. `handle_whatsapp_message` and `handle_meta_event` take a raw webhook payload, set the business scope, and call `handle_text`, `handle_voice` or `handle_photo`.
+- **Sends:** `deliver(channel, phone, text, ogg, image)` is the only function that talks to a channel's Send API; `send_update` wraps it for messages Mitu starts, with the 24-hour check.
+- **Fixed replies:** `canned_reply` stores the customer's message and answers from `messages` in the business file without the LLM (unsupported file types, unclear or long voice notes, errors).
+- **Background work:** `remind_unconfirmed` (every minute) and `resume_unfinished` (at startup).
+- **Change it when:** a new message type or a new channel arrives. Behaviour that every channel should share goes in here or in `agent.respond`, not in a channel module.
