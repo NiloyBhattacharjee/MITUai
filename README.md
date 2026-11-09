@@ -1040,3 +1040,12 @@ One line per option group, the same in the business file and the dashboard:
 - `flag_for_human(db, conv, reason, stop_bot)` sets `needs_human` and the reason, optionally turns the AI off for that chat, and emails the owner only the first time a chat is flagged (one email per handoff, not per message).
 - `email_owner(subject, body)` sends to the business's `alert_email` (or `ALERT_EMAIL`) through SMTP on its own thread, so the customer's reply never waits on email. No SMTP settings, no email.
 - **Change it when:** alerts should go somewhere else too (WhatsApp to the owner, a push notification). This is the one place to add it.
+
+#### `config.py`: settings and money
+
+[`backend/app/config.py`](backend/app/config.py)
+
+- Loads `.env` from the repository root and exposes the install-wide settings: `DATABASE_URL`, `MEDIA_DIR`, `LLM_PROVIDER`, the Meta app's secret and verify token, `PUBLIC_URL`, speech settings, and the first business's `SHOP_ID`, `ADMIN_PASSWORD`, `STAFF` and channel tokens (used only by `seed.py`).
+- **Money:** `cents(4.50) -> 450` on the way in, `money(450) -> "৳4.50"` on the way out, with the currency of the business in scope. Amounts are never floats in the database.
+- Per-business settings are not here: they're the business file, read through `tenancy.cfg()`.
+- New env vars go in `.env.example` too, with a comment.
