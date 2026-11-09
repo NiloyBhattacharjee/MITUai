@@ -1082,3 +1082,27 @@ Which pages show and what they're called comes from `GET /api/business` (a salon
 [`backend/backup.py`](backend/backup.py) writes one `.tar.gz` with a consistent copy of the SQLite database (SQLite's own backup API, safe while the app is writing) and the media folder, and keeps the newest `BACKUP_KEEP` (14). The `backup` container runs it at start and then daily into `./backups`.
 
 A backup on the same disk doesn't survive losing the server: copy the folder off the server too. To restore, stop the stack, put `shop.db` and `media/` back into the `data` volume, and start it again.
+
+### Testing
+
+`pytest` runs in about 15 seconds with no credentials, because everything outside the process is faked in [`tests/conftest.py`](backend/tests/conftest.py):
+
+| Real thing | In the tests |
+|---|---|
+| The database | a fresh SQLite file per test, with the café `little-fern` from `examples/cafe.yaml` in scope |
+| The LLM | `FakeLLM`: each queued turn is a function `(history, call_tool) -> reply`, so a test decides which tools the "model" calls |
+| Meta's Graph API | the `graph` fixture: an httpx mock transport that records every request |
+| The clock | `hours.local_now` pinned to 10:00 today, so opening-hour rules don't depend on when tests run |
+| Logins | each staff member's session token is their password; scrypt runs at a tiny cost |
+| Speech | a fake STT returning a set transcript, and ffmpeg stubbed |
+
+| File | Covers |
+|---|---|
+| `test_agent.py` | the tools, ordering rules and the confirmation guard |
+| `test_webhook.py` | signatures, routing to the right business, dedupe, resume, every channel |
+| `test_tenancy.py` | one business can never see or change another's data, through any page or webhook |
+| `test_dashboard.py`, `test_approvals.py`, `test_analytics.py` | the API the dashboard uses |
+| `test_business_types.py` | the shop and the salon: what each business type gets |
+| `test_voice.py`, `test_backup.py`, `test_eval.py` | voice notes, backups, the eval's own checks |
+
+A bug fix or new rule starts with a failing test in the matching file.
