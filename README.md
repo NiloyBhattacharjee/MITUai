@@ -415,3 +415,30 @@ stateDiagram-v2
 ```
 
 The primary key is Meta's message id, so a retry can't be inserted twice. An error still marks the message done (no retry loop); only a crash leaves it pending. That makes delivery at-least-once: rarely, a customer whose reply was cut off by a restart gets it twice.
+
+### One agent turn
+
+`agent.respond()` in [`agent.py`](backend/app/agent.py) is the single entry point every channel uses:
+
+```mermaid
+flowchart TD
+    A["respond(conv_id, channel, phone, text)"] --> L["take this chat's lock"]
+    L --> G["get or create the Conversation"]
+    G --> U["store the customer's message"]
+    U --> E{"bot on for this chat?"}
+    E -- "no: staff are handling it" --> N["return None (no reply)"]
+    E -- "yes" --> H["last 30 messages to history"]
+    H --> R["llm.run(system prompt, history, this business's tools)"]
+    R -- "tool calls" --> T["tools.run_tool, each logged as a ToolCall with its time"]
+    T --> R
+    R -- "exception" --> F["flag the chat for a person,<br/>reply with messages.error"]
+    R -- "reply text" --> S["save ToolCalls and LlmUsage (cost)"]
+    F --> S
+    S --> K{"empty reply and chat handed off?"}
+    K -- "yes" --> HO["reply with messages.handoff"]
+    K -- "no" --> M["store the assistant message"]
+    HO --> M
+    M --> O["return it to the channel to send"]
+```
+
+The tool calls and usage are saved even when the LLM fails halfway, so the dashboard's "AI used …" line and the cost figures stay true.
