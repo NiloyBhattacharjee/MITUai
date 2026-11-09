@@ -982,3 +982,12 @@ The breakdowns below go from the middle out: the message path first, then the da
 - **Providers:** `OpenAISTT` (Whisper, prompted with the menu's item names via `stt_hint`, confidence from segment log-probabilities), `AWSTranscribeSTT` (batch job through S3, cleaned up afterwards) and `OpenAITTS`. `STT_PROVIDER` picks the speech-to-text one.
 - **ffmpeg helpers:** `to_wav` (16 kHz mono for STT), `to_ogg_opus` (what WhatsApp plays as a voice message) and `wav_seconds`. Temp files rather than pipes, because browser recordings need seekable input.
 - **Change it when:** adding a speech provider. `compare_stt.py` runs both on the same recordings to compare text, confidence and speed.
+
+#### `auth.py`: passwords and sessions
+
+[`backend/app/auth.py`](backend/app/auth.py)
+
+- **Passwords:** scrypt with a random salt; the cost is stored with each hash, so raising `SCRYPT_N` later doesn't break old passwords. `strong_enough` rejects passwords under 8 characters and common ones like `admin`.
+- **Sessions:** `log_in` returns a random token and stores only its SHA-256, so a leaked database hands out no live sessions. `session(token)` gives back the business and the person, for 30 days. `log_out` deletes it.
+- **Why tokens:** checking a slow scrypt hash on every 2-second poll would be too slow, so the token stands in for the password.
+- **Change it when:** adding roles (everyone at a business can do everything today) or session expiry on password change.
