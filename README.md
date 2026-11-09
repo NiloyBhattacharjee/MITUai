@@ -610,3 +610,25 @@ sequenceDiagram
 ```
 
 It's marked before sending, so a send that fails or a crash halfway never turns into a second nudge.
+
+### Voice notes
+
+```mermaid
+flowchart TD
+    V["audio message"] --> DL["download from Meta<br/>(WhatsApp: GET media id, then the file)"]
+    DL --> SAVE["save the original under a random name<br/>(the dashboard plays it)"]
+    SAVE --> WAV["ffmpeg: 16 kHz mono WAV"]
+    WAV --> LEN{"over 2 minutes?"}
+    LEN -- "yes" --> TL["fixed reply: voice_too_long"]
+    LEN -- "no" --> STT["speech-to-text<br/>OpenAI Whisper with the menu's names as a hint,<br/>or Amazon Transcribe"]
+    STT -- "error" --> ER["fixed reply: error, chat flagged"]
+    STT --> CF{"empty, or confidence below STT_MIN_CONFIDENCE?"}
+    CF -- "yes" --> UN["fixed reply: voice_unclear<br/>(never guess an order)"]
+    CF -- "no" --> AG["agent.respond(transcript, is_voice=True)"]
+    AG --> TTS{"VOICE_REPLY=true?"}
+    TTS -- "yes" --> OGG["TTS, ffmpeg to OGG/Opus, sent as audio too"]
+    TTS -- "no" --> TX["text reply"]
+    OGG --> TX
+```
+
+The fixed replies skip the LLM and come from `messages` in the business file. Each step's time is logged per voice note. See [Voice notes](#voice-notes) for the providers.
