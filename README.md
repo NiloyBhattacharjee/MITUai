@@ -265,3 +265,27 @@ flowchart LR
 ```
 
 Customers never see Mitu's own address: they write to the business's WhatsApp number, Facebook Page or Instagram account, and Meta forwards each message to Mitu's webhooks. Staff use the dashboard. Everything else (the LLM, speech and email) is called by the backend on the way through.
+
+### How it's deployed
+
+```mermaid
+flowchart TB
+    NET(("Internet<br/>ports 80 and 443"))
+    subgraph Host["Server (docker compose)"]
+        CADDY["frontend container<br/>Caddy + built React app<br/>HTTPS certificates"]
+        BACK["backend container<br/>seed.py --if-empty, then uvicorn :8000"]
+        BAK["backup container<br/>backup.py once a day"]
+        VDATA[("volume: data<br/>shop.db + media/")]
+        VCADDY[("volume: caddy<br/>certificates")]
+        DIR[("./backups on the host")]
+    end
+    NET --> CADDY
+    CADDY -- "/api/* /media/* /webhook /messenger/webhook" --> BACK
+    CADDY -- "everything else: index.html and assets" --> CADDY
+    BACK --> VDATA
+    BAK -- "reads" --> VDATA
+    BAK -- "writes .tar.gz, keeps 14" --> DIR
+    CADDY --> VCADDY
+```
+
+The backend has no published port: only Caddy reaches it, which is also why uvicorn trusts the forwarded client IP (`--proxy-headers`, used by the login lockout). `business.yaml` is mounted read-only into the backend for the first start. See [`docker-compose.yml`](docker-compose.yml), [`frontend/Caddyfile`](frontend/Caddyfile) and [`backend/Dockerfile`](backend/Dockerfile).
