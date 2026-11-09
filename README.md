@@ -692,3 +692,19 @@ sequenceDiagram
 ```
 
 Kinds are `refund`, `discount`, `large_booking` (only for businesses with table bookings) and `special_request`. A second staff member deciding the same request gets a 409 naming who already did.
+
+### Table bookings
+
+```mermaid
+flowchart TD
+    Q["check_availability(date, time, party)"] --> V{"valid?<br/>format, not past, within days_ahead,<br/>inside hours minus last_booking_before_close"}
+    V -- "no" --> E["problems listed"]
+    V -- "party over max_party" --> BIG["instruction: request_approval kind large_booking"]
+    V -- "yes" --> CAP{"seats booked within one sitting of that time<br/>+ this party <= capacity?"}
+    CAP -- "yes" --> OK["available"]
+    CAP -- "no" --> ALT["full: the 3 nearest free 15-minute slots"]
+    OK --> R["assistant repeats the details, customer agrees"]
+    R --> B["book_table: the same checks again, then insert"]
+```
+
+Booking is one step (no stored quote like orders): a wrong booking is cheap to cancel. Booking the same time twice from one chat returns the existing booking instead of a second one. Capacity counts seats, not tables, which over-counts slightly (see Decisions).
