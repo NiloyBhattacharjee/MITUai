@@ -667,3 +667,28 @@ sequenceDiagram
 ```
 
 Other ways a chat gets flagged: the LLM call fails (the customer gets `messages.error`), or a voice note can't be processed. Those flag the chat but leave the AI on. A flagged chat shows in Conversations with its reason, and doesn't count as AI-handled on the Overview.
+
+### Approvals
+
+For requests with a clear yes or no, the assistant asks the team and keeps chatting, instead of stepping back:
+
+```mermaid
+sequenceDiagram
+    participant C as Customer
+    participant A as Assistant
+    participant DB as Database
+    participant S as Staff
+    C->>A: The kurti came torn, can I get a refund?
+    A->>DB: request_approval(kind=refund, summary, order_id)
+    Note over A,DB: one pending request per kind per chat, the order must be from this chat
+    A-->>S: email: approval needed
+    A->>C: The team will check and reply here.
+    S->>DB: approve or decline, optional note
+    Note over S,DB: conditional update WHERE status=pending, so two staff can't both decide
+    alt large_booking approved
+        DB->>DB: insert the Booking from the stored details
+    end
+    DB->>C: approval_approved / approval_declined / large_booking_approved
+```
+
+Kinds are `refund`, `discount`, `large_booking` (only for businesses with table bookings) and `special_request`. A second staff member deciding the same request gets a 409 naming who already did.
