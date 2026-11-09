@@ -964,3 +964,12 @@ The breakdowns below go from the middle out: the message path first, then the da
 - **Graph API client:** `send_text`, `send_image`, `send_audio`, `upload_media`, `download_media`, `mark_read`, each with the token and number of the business in scope.
 - **Shared helpers** used by Messenger too: `valid_signature`, `shop_for`, `first_time_seen`, and the `http` client that tests replace with a mock transport.
 - **Change it when:** Meta changes its API (`GRAPH_API_VERSION`) or a new WhatsApp message type is supported (then also `pipeline.handle_whatsapp_message`).
+
+#### `messenger.py`: Facebook Messenger and Instagram
+
+[`backend/app/messenger.py`](backend/app/messenger.py)
+
+- **Webhook:** `GET` and `POST /messenger/webhook`, verified and signed with the same Meta app as WhatsApp. `CHANNELS` maps the webhook's `object` to `messenger` or `instagram`, and `ID_COLUMN` says which shop column the entry id matches.
+- **Send API:** `send_text`, `send_image` (by public URL) and `download` for attachments, using the business's Page token.
+- **Skips:** reads, deliveries and echoes of our own messages, so the assistant never answers itself.
+- **Change it when:** comment replies arrive (issue #16) or staff replies from the Meta inbox should pause the AI (issue #27).
