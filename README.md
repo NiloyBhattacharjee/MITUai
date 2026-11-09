@@ -708,3 +708,19 @@ flowchart TD
 ```
 
 Booking is one step (no stored quote like orders): a wrong booking is cheap to cancel. Booking the same time twice from one chat returns the existing booking instead of a second one. Capacity counts seats, not tables, which over-counts slightly (see Decisions).
+
+### Appointments
+
+A service is a menu item with `minutes`. `appointments.providers` in the business file says who does what (`all` or a list of service ids).
+
+```mermaid
+flowchart TD
+    T["appointment_times(service, date, provider?)"] --> SL["every slot_minutes inside opening hours"]
+    SL --> FR{"for each start time: not past, service fits before closing,<br/>and which providers have no overlapping appointment?"}
+    FR --> OUT["free times, each with who is free"]
+    OUT --> C["customer picks one and agrees to the details"]
+    C --> B["book_appointment"]
+    B --> LK["_booking_lock: check free again and insert,<br/>first free provider unless one was asked for"]
+```
+
+Everyone works the business's opening hours; per-person hours and days off are issue #3. Moving an appointment is "book the new one, then cancel the old one" (one step is issue #4).
