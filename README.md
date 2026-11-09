@@ -794,3 +794,70 @@ Simulator chats have ids `<business>:sim-<phone>` and show up in Conversations l
 | Revenue per day, top items, pickup vs delivery, statuses | from the same orders |
 
 "Today" and day boundaries are in the business's timezone. It's computed in Python over the period's rows, which is fine for a small shop; the `ponytail:` comment there says when to move it to SQL.
+
+### Data model
+
+```mermaid
+erDiagram
+    SHOP ||--o{ STAFF : employs
+    STAFF ||--o{ LOGIN_SESSION : "signs in with"
+    SHOP ||--o{ MENU_ITEM : sells
+    SHOP ||--o{ CONVERSATION : has
+    CONVERSATION ||--o{ MESSAGE : contains
+    MESSAGE ||--o{ TOOL_CALL : "answered with"
+    CONVERSATION ||--o{ LLM_USAGE : costs
+    CONVERSATION ||--o{ ORDER : "placed in"
+    CONVERSATION ||--o{ BOOKING : "made in"
+    CONVERSATION ||--o{ APPROVAL : "asked in"
+    SHOP ||--o{ SETTING : has
+    SHOP {
+        string id PK "slug staff type to sign in"
+        json config "business.yaml without the menu"
+        string whatsapp_phone_number_id
+        string page_id
+        string instagram_id
+    }
+    MENU_ITEM {
+        string id "the business's own code, e.g. M01"
+        int price "cents"
+        json options
+        bool available "sold-out switch"
+        int stock "null = not counted"
+        int minutes "set = a service"
+    }
+    CONVERSATION {
+        string id PK "business:phone"
+        string channel "whatsapp messenger instagram sim"
+        bool bot_enabled
+        bool needs_human
+        json pending_order "the last quote"
+    }
+    MESSAGE {
+        int id PK
+        string role "user assistant human"
+        string text
+        string audio_path "voice note or photo"
+    }
+    ORDER {
+        int id PK
+        json items "name and unit price at the time"
+        int total "cents"
+        string status
+        datetime ready_at "UTC"
+    }
+    BOOKING {
+        int id PK
+        int party_size
+        datetime at "UTC"
+        string service "set for appointments"
+        string provider
+    }
+    APPROVAL {
+        int id PK
+        string kind
+        string status "pending approved declined"
+        json details "large_booking: the booking"
+    }
+```
+
+Every table except `shops`, `staff`, `login_sessions` and `seen_wa_messages` is `Scoped` (it has a `shop_id` and is filtered by tenancy). Times are stored as naive UTC and shown in the business's timezone; money is integer cents. An order keeps each line's name and price, so editing or deleting a menu item never changes past orders. New columns are added on startup by `db.init_db` (add-only; renames and drops need a real migration tool).
