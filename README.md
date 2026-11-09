@@ -1106,3 +1106,21 @@ A backup on the same disk doesn't survive losing the server: copy the folder off
 | `test_voice.py`, `test_backup.py`, `test_eval.py` | voice notes, backups, the eval's own checks |
 
 A bug fix or new rule starts with a failing test in the matching file.
+
+### The eval
+
+The tests can't tell whether the real model behaves; [`eval.py`](backend/eval.py) can. It runs the scripted conversations in [`evals/cases.yaml`](backend/evals/cases.yaml) against the LLM in `.env`:
+
+```mermaid
+flowchart TD
+    Y["cases.yaml"] --> F["pick cases by word (optional)"]
+    F --> D["for each case: a fresh throwaway database<br/>with its business file (cafe by default, or shop / salon)<br/>plus setup_order / setup_booking"]
+    D --> K["clock set to 10:00 business time"]
+    K --> T["for each turn: agent.respond(say) with the real model,<br/>every tool call recorded"]
+    T --> C1["turn checks: calls, no_calls, reply regex, no_reply,<br/>order and booking counts"]
+    C1 --> C2["end checks: called, called_any, needs_human,<br/>fields of order 1 / booking 1, approval kinds"]
+    C2 --> R["pass or fail, transcript of failures, cost in $"]
+    R --> X["exit 1 if any case failed"]
+```
+
+It costs real money (roughly $1–3 for a full run on Sonnet, free on Ollama), so run it after changing the prompt, the tools or the model, not on every change. When a real chat goes wrong, add it as a case.
