@@ -348,3 +348,38 @@ flowchart LR
 | Internet → backend | Only Caddy is reachable; the backend has no public port | [`docker-compose.yml`](docker-compose.yml) |
 
 Known gaps are written down where they live: Meta tokens are stored as plain text in the `shops` table, and the login lockout is in memory.
+
+### A WhatsApp message, end to end
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Customer
+    participant Meta as WhatsApp Cloud API
+    participant WH as whatsapp.receive
+    participant DB as Database
+    participant P as pipeline
+    participant A as agent.respond
+    participant L as LLM + tools
+    C->>Meta: Is the blue kurti available in M?
+    Meta->>WH: POST /webhook (signed)
+    WH->>WH: check X-Hub-Signature-256
+    WH->>WH: shop_for(phone_number_id)
+    WH->>DB: insert SeenWhatsAppMessage(id, payload, done=False)
+    Note over WH,DB: a retry of the same message id fails to insert and is dropped
+    WH-->>Meta: 200 ok (fast, before any LLM work)
+    WH->>P: background: handle_whatsapp_message
+    P->>Meta: mark_read
+    P->>A: handle_text then respond(conv_id, text)
+    A->>DB: store the customer message
+    A->>L: system prompt, last 30 messages, tools
+    L->>DB: search_menu, get_item, ...
+    L-->>A: reply text
+    A->>DB: store reply, tool calls, token usage
+    A-->>P: reply
+    P->>Meta: send_text (Graph API)
+    Meta->>C: Yes, 3 left in M...
+    P->>DB: mark SeenWhatsAppMessage done
+```
+
+The conversation id is `<business>:<phone>`, so the same customer writing to two businesses on one install has two separate chats.
