@@ -861,3 +861,19 @@ erDiagram
 ```
 
 Every table except `shops`, `staff`, `login_sessions` and `seen_wa_messages` is `Scoped` (it has a `shop_id` and is filtered by tenancy). Times are stored as naive UTC and shown in the business's timezone; money is integer cents. An order keeps each line's name and price, so editing or deleting a menu item never changes past orders. New columns are added on startup by `db.init_db` (add-only; renames and drops need a real migration tool).
+
+### From a business file to features
+
+```mermaid
+flowchart LR
+    F["business.yaml"] --> SH["shops.create / manage.py add-shop"]
+    SH --> C["shops.config (everything but the menu)"]
+    SH --> MI["menu_items (the menu)"]
+    C --> T["tools.enabled() and specs()"]
+    C --> P["agent.system_prompt()"]
+    C --> PG["GET /api/business: which pages show,<br/>and their labels (Menu, Products, Services)"]
+    C --> MSG["fixed replies and customer updates (messages)"]
+    C --> H["hours.py: opening hours, timezone"]
+```
+
+After the first import, the menu is managed on the dashboard; re-running `seed.py` or `manage.py update-shop` only adds items that aren't there yet and replaces the settings. That's why the settings live as JSON on the shop row: one install can hold a shop, a café and a salon side by side.
