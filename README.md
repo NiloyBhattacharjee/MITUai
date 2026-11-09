@@ -442,3 +442,22 @@ flowchart TD
 ```
 
 The tool calls and usage are saved even when the LLM fails halfway, so the dashboard's "AI used …" line and the cost figures stay true.
+
+### The tool loop
+
+Each provider in [`llm.py`](backend/app/llm.py) runs the same loop in its own native format, which keeps the model's thinking and tool blocks intact between steps:
+
+```mermaid
+flowchart TD
+    S["messages = history"] --> C["call the model with system, messages, tools"]
+    C --> U["append token usage for this call"]
+    U --> D{"model asked for tools?"}
+    D -- "no" --> R["return the reply text"]
+    D -- "yes" --> T["run each tool with call_tool(name, args)"]
+    T --> A["append the results as JSON"]
+    A --> M{"8 calls already?"}
+    M -- "no" --> C
+    M -- "yes" --> E["return empty reply"]
+```
+
+An empty reply is never sent as-is: `agent.respond` turns it into the handoff message if the chat was handed off, and sends nothing otherwise. On the Anthropic API a refusal also returns empty, after the server-side fallback has already retried it on another model.
