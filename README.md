@@ -955,3 +955,12 @@ The breakdowns below go from the middle out: the message path first, then the da
 - **Conventions:** money in integer cents, times in naive UTC (`db.now()`), status lists in `ORDER_STATUSES`, `BOOKING_STATUSES`, `APPROVAL_KINDS`. SQLite by default (`DATABASE_URL`), with a 30-second lock timeout for concurrent writers.
 - **Migrations:** `init_db()` creates tables and adds missing columns; it refuses a database from the old single-business version instead of guessing.
 - **Change it when:** a new field or table. Nullable new columns arrive on their own; anything else needs a migration plan.
+
+#### `whatsapp.py`: the WhatsApp Cloud API
+
+[`backend/app/whatsapp.py`](backend/app/whatsapp.py)
+
+- **Webhook:** `GET /webhook` answers Meta's verification; `POST /webhook` checks the signature, finds the business by `phone_number_id`, records each message once and queues it.
+- **Graph API client:** `send_text`, `send_image`, `send_audio`, `upload_media`, `download_media`, `mark_read`, each with the token and number of the business in scope.
+- **Shared helpers** used by Messenger too: `valid_signature`, `shop_for`, `first_time_seen`, and the `http` client that tests replace with a mock transport.
+- **Change it when:** Meta changes its API (`GRAPH_API_VERSION`) or a new WhatsApp message type is supported (then also `pipeline.handle_whatsapp_message`).
