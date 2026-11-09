@@ -724,3 +724,24 @@ flowchart TD
 ```
 
 Everyone works the business's opening hours; per-person hours and days off are issue #3. Moving an appointment is "book the new one, then cancel the old one" (one step is issue #4).
+
+### Signing in
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant API as POST /api/login
+    participant AU as auth
+    participant DB as Database
+    B->>API: business ID + password
+    API->>API: 10 wrong tries from this IP in 15 min? then 429
+    API->>AU: log_in(shop, password)
+    AU->>DB: this business's staff, scrypt check each
+    AU->>DB: store SHA-256 of a new random token
+    API-->>B: token, name, business
+    B->>B: keep token in localStorage
+    B->>API: every /api call sends X-Session: token
+    Note over API,DB: middleware SignedIn: auth.session(token) gives business + person, the request runs in that scope
+```
+
+The password says who you are, so there are no usernames: each person at a business has their own password. Sessions last 30 days, and a 401 anywhere logs the dashboard out. The lockout is per IP, so a guesser can't lock the owner out.
