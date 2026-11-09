@@ -877,3 +877,23 @@ flowchart LR
 ```
 
 After the first import, the menu is managed on the dashboard; re-running `seed.py` or `manage.py update-shop` only adds items that aren't there yet and replaces the settings. That's why the settings live as JSON on the shop row: one install can hold a shop, a café and a salon side by side.
+
+### The components
+
+```mermaid
+flowchart TD
+    MAIN["main.py<br/>dashboard API, simulator, background jobs"] --> PIPE
+    WA["whatsapp.py"] --> PIPE
+    MS["messenger.py"] --> PIPE
+    PIPE["pipeline.py<br/>one entry per message type"] --> AG["agent.py<br/>prompt, history, turn"]
+    PIPE --> VO["voice.py"]
+    AG --> LLM["llm.py"]
+    AG --> TO["tools.py"]
+    TO --> HO["hours.py"] & OP["options.py"] & NO["notify.py"]
+    TO & AG & MAIN --> DB["db.py"]
+    DB --> TE["tenancy.py"]
+    MAIN --> AU["auth.py"]
+    SHOPS["shops.py<br/>(manage.py, seed.py)"] --> DB
+```
+
+The breakdowns below go from the middle out: the message path first, then the data layer, the edges and the tooling.
