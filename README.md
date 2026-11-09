@@ -540,3 +540,19 @@ stateDiagram-v2
 ```
 
 The stored quote keeps the arguments, the total, the turn it was made in and when, plus `reminded`. Confirming re-runs the validation on the stored arguments, not on anything the model passes in.
+
+### Stock
+
+Items work two ways: `available` is a sold-out switch, and `stock` (optional) is a count.
+
+```mermaid
+flowchart LR
+    Q["quote"] -- "qty more than stock left" --> E1["error: only N left"]
+    P["place order"] -- "UPDATE menu_items SET stock = stock - qty<br/>WHERE stock >= qty" --> OK{"row updated?"}
+    OK -- "yes" --> D["order placed"]
+    OK -- "no: someone bought it first" --> RB["roll back, error: not enough left"]
+    X["cancelled by the customer or on the dashboard"] -- "stock + qty" --> S[("menu_items.stock")]
+    U["un-cancelled on the dashboard"] -- "takes it again, 409 if short" --> S
+```
+
+The count goes down with one conditional `UPDATE`, so two customers can't both buy the last one even when their turns run at the same moment. An item with stock 0 counts as sold out (`tools.in_stock`). Items without a count are skipped. Counting per size or colour isn't built yet (issue #1).
