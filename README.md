@@ -398,3 +398,20 @@ They take the same path as WhatsApp from `pipeline` onwards; only the edges diff
 | Skipped | status updates | read receipts, deliveries and echoes of our own replies |
 | Sending a photo | upload, then send with a caption | Meta fetches it from `PUBLIC_URL`; photo first, then the text |
 | Voice replies | yes, with `VOICE_REPLY=true` | text only |
+
+### Duplicate webhooks and crash recovery
+
+Meta retries a webhook it thinks failed, and a restart can cut a reply off halfway. Both are handled by one table, `seen_wa_messages`:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Pending: webhook arrives, row inserted with done=False
+    [*] --> Dropped: same message id again, insert fails
+    Pending --> Done: handled, or failed with an error
+    Pending --> Pending: server restarts mid-turn
+    Pending --> Done: resume_unfinished re-runs it at startup
+    Done --> [*]
+    Dropped --> [*]
+```
+
+The primary key is Meta's message id, so a retry can't be inserted twice. An error still marks the message done (no retry loop); only a crash leaves it pending. That makes delivery at-least-once: rarely, a customer whose reply was cut off by a restart gets it twice.
