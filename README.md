@@ -1140,3 +1140,19 @@ flowchart LR
 ```
 
 [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) needs no secrets for the checks. [`claude.yml`](.github/workflows/claude.yml) is separate: it starts an agent on an issue when it gets the `claude` label or an `@claude` mention.
+
+### Where to change what
+
+| You want to… | Change | And |
+|---|---|---|
+| Change what the assistant says or how it behaves | `agent.system_prompt` | run the eval |
+| Give the assistant a new ability | a function, schema and `FUNCTIONS` entry in `tools.py`; `enabled()` for who gets it | a test in `test_agent.py`, then the eval |
+| Add a rule the model must not break | the tool that does it (like `create_order`), not only the prompt | a failing test first |
+| Add a setting to the business file | read it with `tenancy.cfg()` where it's used | document it in [Set up a business](#3-set-up-a-business) |
+| Add a business table | a model subclassing `db.Scoped` | a test in `test_tenancy.py` |
+| Support a new message type | `pipeline.py` (and the channel's webhook parser) | a test in `test_webhook.py` |
+| Add a channel | a router like `messenger.py`, a branch in `pipeline.deliver` | route it through `pipeline`, never straight to the agent |
+| Add an LLM provider | a class in `llm.py` with `run(...)`, its prices in `PRICES` | `LLM_PROVIDER` in `.env.example` and the README |
+| Add a dashboard page | an endpoint in `main.py`, a page in `Dashboard.jsx`, a link in `App.jsx` | `npm run build` |
+| Add an env var | `config.py` | `.env.example` and the README |
+| Fix a chat that went wrong | the tool or prompt, whichever caused it | a case in `evals/cases.yaml` |
