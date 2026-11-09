@@ -632,3 +632,18 @@ flowchart TD
 ```
 
 The fixed replies skip the LLM and come from `messages` in the business file. Each step's time is logged per voice note. See [Voice notes](#voice-notes) for the providers.
+
+### Photos, in and out
+
+**In:** a customer sends a photo, often a screenshot of one of the shop's posts.
+
+```mermaid
+flowchart LR
+    I["photo (JPG or PNG)"] --> S["saved as media/random.jpg"]
+    S --> A["agent.respond(caption, audio_path=file)"]
+    A --> H["history: [photo] + the image itself, every turn"]
+    H --> L["LLM looks at it, then search_menu"]
+    O["any other file type"] --> F["fixed reply: unsupported_media"]
+```
+
+**Out:** the model calls `send_item_photo(item_id)` for items with a photo (uploaded on the Menu page, stored under `media/menu/<business>/<item id>.jpg`). `pipeline.deliver` sends it: on WhatsApp it uploads the file and sends it with the name and price as a caption, on Messenger and Instagram Meta fetches it from `PUBLIC_URL`. The photo is stored in the chat as a `[photo sent]` message so the model knows it's already there.
