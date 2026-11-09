@@ -1018,3 +1018,17 @@ Webhooks come from the `whatsapp` and `messenger` routers, and `/media` is serve
 - **Converting:** `to_utc` and `to_local` between the naive UTC in the database and naive local times in the business's zone.
 - **Opening hours:** `periods(day)` parses `"07:00-15:00"` or `"07:00-11:00, 17:00-21:00"` (or `closed`), `is_open(at)`, `spec(day)` and `weekly()`.
 - **Showing it:** `label(at)` gives `"Sat 12 Oct, 13:30"`, with the weekday spelled out so nobody has to work it out.
+
+#### `options.py`: item options
+
+[`backend/app/options.py`](backend/app/options.py)
+
+One line per option group, the same in the business file and the dashboard:
+
+| Line | Means |
+|---|---|
+| `Size*: Regular, Large +0.80` | pick exactly one; `*` makes it required; `+0.80` is the extra cost |
+| `Milk: Full cream, Oat +0.80` | pick at most one |
+| `Extras (any): Extra shot +0.60` | pick any number |
+
+`parse` turns lines into stored groups (and raises naming the wrong line), `lines` turns them back for editing, `describe` writes them for the model, and `choose` checks a customer's picks and adds up the extra cost. A missing required choice comes back to the model as a problem, so it asks instead of guessing.
