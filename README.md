@@ -325,3 +325,26 @@ flowchart LR
 ```
 
 The scope is a `ContextVar` in [`tenancy.py`](backend/app/tenancy.py), so it follows the request or job and can't leak between threads. New rows get `shop_id` filled in automatically. With a single business on the install, `shop_for` sends every webhook to it, so the channel ids are optional.
+
+### Trust boundaries
+
+```mermaid
+flowchart LR
+    META["Meta webhooks"] -- "HMAC-SHA256 of the body<br/>X-Hub-Signature-256 with WHATSAPP_APP_SECRET" --> B
+    BROWSER["Browser"] -- "session token<br/>(only its SHA-256 is stored)" --> B
+    B["Backend"] --> T["Tenancy filter<br/>one business per query"]
+    T --> OWN["Customer tools<br/>only this chat's orders and bookings"]
+    T --> RULES["create_order<br/>confirmation enforced in code"]
+    B --> MED["/media<br/>public, random 128-bit file names"]
+```
+
+| Boundary | Guard | Code |
+|---|---|---|
+| Meta → backend | Signature check on every POST; `GET /webhook` only echoes the challenge for the right verify token | [`whatsapp.py`](backend/app/whatsapp.py) `valid_signature`, `verify` |
+| Browser → backend | scrypt passwords, 30-day session tokens stored hashed, 10 wrong passwords per IP lock it for 15 minutes | [`auth.py`](backend/app/auth.py), `main.login` |
+| One business → another | `Scoped` tables filtered by the business in scope | [`db.py`](backend/app/db.py), [`tenancy.py`](backend/app/tenancy.py) |
+| Customer → other customers | Tools look up orders and bookings by this chat only, never by a typed phone number | `tools._own`, `tools.saved_details` |
+| LLM → the shop's data | Tools validate everything; the order needs a quote in an earlier turn | `tools.create_order` |
+| Internet → backend | Only Caddy is reachable; the backend has no public port | [`docker-compose.yml`](docker-compose.yml) |
+
+Known gaps are written down where they live: Meta tokens are stored as plain text in the `shops` table, and the login lockout is in memory.
