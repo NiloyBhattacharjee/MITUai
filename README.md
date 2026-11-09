@@ -926,3 +926,13 @@ The breakdowns below go from the middle out: the message path first, then the da
 - **Rules it enforces:** prices and totals in cents from the database, stock and sold-out, required options, opening hours and lead time, delivery address, payment method, the two-step order, one chat's own orders and bookings only.
 - **Results talk to the model:** errors come back as `{"error", "problems"}` and successes carry a `status` like `PLACED` or `QUOTE_ONLY_NOT_PLACED` and often an `instruction`, which is how the code steers what the model says next.
 - **Change it when:** the assistant needs a new ability. Add the function, its entry in `FUNCTIONS` and its schema, decide in `enabled()` which businesses get it, write a test, then run the eval.
+
+#### `llm.py`: one interface over three providers
+
+[`backend/app/llm.py`](backend/app/llm.py)
+
+- **Interface:** `run(system, history, tools, call_tool, usage) -> reply text`. That's all the rest of the app knows about LLMs.
+- **Providers:** `OllamaLLM` (local, the default, free), `AnthropicLLM` (prompt caching, low effort for short replies, server-side refusal fallback) and `BedrockLLM` (`converse` with tool use). `LLM_PROVIDER` picks one; `get_llm()` builds it once.
+- **Usage:** each API call appends tokens (including cache reads and writes) to `usage`; `cost_usd` prices it from `PRICES`, so the Overview shows the real cost per business. Ollama costs 0; an unknown model costs `None` rather than a guess.
+- **Images:** customer photos go to each provider in its own format.
+- **Change it when:** adding a provider or a model's price. Tests swap the whole thing for `FakeLLM` (see Testing).
