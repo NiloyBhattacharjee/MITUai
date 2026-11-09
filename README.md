@@ -1032,3 +1032,11 @@ One line per option group, the same in the business file and the dashboard:
 | `Extras (any): Extra shot +0.60` | pick any number |
 
 `parse` turns lines into stored groups (and raises naming the wrong line), `lines` turns them back for editing, `describe` writes them for the model, and `choose` checks a customer's picks and adds up the extra cost. A missing required choice comes back to the model as a problem, so it asks instead of guessing.
+
+#### `notify.py`: telling the team
+
+[`backend/app/notify.py`](backend/app/notify.py)
+
+- `flag_for_human(db, conv, reason, stop_bot)` sets `needs_human` and the reason, optionally turns the AI off for that chat, and emails the owner only the first time a chat is flagged (one email per handoff, not per message).
+- `email_owner(subject, body)` sends to the business's `alert_email` (or `ALERT_EMAIL`) through SMTP on its own thread, so the customer's reply never waits on email. No SMTP settings, no email.
+- **Change it when:** alerts should go somewhere else too (WhatsApp to the owner, a push notification). This is the one place to add it.
