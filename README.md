@@ -647,3 +647,23 @@ flowchart LR
 ```
 
 **Out:** the model calls `send_item_photo(item_id)` for items with a photo (uploaded on the Menu page, stored under `media/menu/<business>/<item id>.jpg`). `pipeline.deliver` sends it: on WhatsApp it uploads the file and sends it with the name and price as a caption, on Messenger and Instagram Meta fetches it from `PUBLIC_URL`. The photo is stored in the chat as a `[photo sent]` message so the model knows it's already there.
+
+### Handing a chat to a person
+
+```mermaid
+sequenceDiagram
+    participant C as Customer
+    participant A as Assistant
+    participant N as notify
+    participant S as Staff (dashboard)
+    C->>A: This is the second time my order was wrong!
+    A->>N: escalate_to_human(reason)
+    N->>N: needs_human=True, bot off for this chat
+    N-->>S: email (only the first time it's flagged)
+    A->>C: A team member will reply here soon.
+    C->>A: (more messages: stored, no AI reply)
+    S->>C: staff reply from Conversations (inside 24 h)
+    S->>A: turn the AI back on, flag cleared
+```
+
+Other ways a chat gets flagged: the LLM call fails (the customer gets `messages.error`), or a voice note can't be processed. Those flag the chat but leave the AI on. A flagged chat shows in Conversations with its reason, and doesn't count as AI-handled on the Overview.
