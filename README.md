@@ -478,3 +478,14 @@ flowchart LR
 ```
 
 `tools.enabled()` decides which tools exist, `tools.specs()` builds their JSON schemas (the `fulfilment` and `payment_method` enums come from the business's own choices), and `agent.system_prompt()` adds only the sections that apply. A salon's assistant is never told about delivery, and couldn't call `create_order` if it tried: `run_tool` rejects tools that aren't enabled.
+
+### What the LLM sees as history
+
+`agent.build_history()` turns stored messages into the history sent on every turn:
+
+- **The last 30 messages**, oldest first, starting with a customer message.
+- **Staff replies count as the business** (role `assistant`), so the model knows what a person already told the customer.
+- **Each customer message starts with its local send time**, like `[Sat 12 Oct 2026 13:05]`, so "tomorrow" and "in 20 minutes" work. It's part of the stored text, so the cached prompt prefix doesn't change between turns.
+- **Markers** say what a message was: `[voice note]` (the transcript), `[photo]` (the customer's photo, re-sent as an image each turn), `[photo sent]` (a product photo we sent, kept as text).
+- **Consecutive messages from one side are merged**, since the LLM APIs want turns to alternate.
+- **Tool calls aren't kept between turns.** The model looks things up again, so it never quotes yesterday's stock or price.
