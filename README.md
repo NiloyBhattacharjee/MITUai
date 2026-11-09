@@ -761,3 +761,19 @@ The dashboard polls instead of using websockets. `useLive(path, ms)` in [`App.js
 | Simulator | the simulated chat | 1 s |
 
 Browsers slow down timers in background tabs, so the kitchen screen should stay in front for the sound.
+
+### The simulator
+
+The simulator is a WhatsApp-style phone in the browser that runs the **same path as a real message**, which is why it needs a signed-in user (every message runs the paid LLM and can place real orders):
+
+```mermaid
+flowchart LR
+    U["Simulator page"] -- "POST /api/sim/message, /voice, /photo" --> M["main.sim_*"]
+    M -- "BackgroundTasks, in this business's scope" --> P["pipeline.handle_text / voice / photo"]
+    P --> A["agent.respond(conv sim-phone)"]
+    A --> DB[("messages")]
+    P -. "deliver: nothing to send for channel sim" .-> X["no push: the page polls"]
+    U -- "GET /api/sim/phone/messages every 1 s" --> DB
+```
+
+Simulator chats have ids `<business>:sim-<phone>` and show up in Conversations like any other chat. The 24-hour window is always open for them. `cli.py` does the same from a terminal.
