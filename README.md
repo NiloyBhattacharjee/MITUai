@@ -907,3 +907,12 @@ The breakdowns below go from the middle out: the message path first, then the da
 - **Fixed replies:** `canned_reply` stores the customer's message and answers from `messages` in the business file without the LLM (unsupported file types, unclear or long voice notes, errors).
 - **Background work:** `remind_unconfirmed` (every minute) and `resume_unfinished` (at startup).
 - **Change it when:** a new message type or a new channel arrives. Behaviour that every channel should share goes in here or in `agent.respond`, not in a channel module.
+
+#### `agent.py`: the assistant's turn
+
+[`backend/app/agent.py`](backend/app/agent.py)
+
+- **Owns:** the system prompt (`system_prompt`), the history (`build_history`) and the turn itself (`respond`).
+- **Keeps:** one turn at a time per chat (`_locks`), the customer's message stored before anything can fail, the bot-off switch respected (staff are handling the chat), every tool call and API call recorded.
+- **On failure:** the chat is flagged for a person and the customer gets the business's `messages.error`, never a stack trace or silence.
+- **Change it when:** the assistant's behaviour or wording changes. Prompt changes need an eval run (`python eval.py`), since the fake LLM in the tests can't tell whether the real model behaves.
