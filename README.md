@@ -383,3 +383,18 @@ sequenceDiagram
 ```
 
 The conversation id is `<business>:<phone>`, so the same customer writing to two businesses on one install has two separate chats.
+
+### Messenger and Instagram
+
+They take the same path as WhatsApp from `pipeline` onwards; only the edges differ ([`messenger.py`](backend/app/messenger.py), `pipeline.handle_meta_event`):
+
+| | WhatsApp | Messenger / Instagram |
+|---|---|---|
+| Webhook | `POST /webhook` | `POST /messenger/webhook` (`object`: `page` or `instagram`) |
+| Signed with | the Meta app secret | the same app secret |
+| Which business | `phone_number_id` | the entry id: `page_id` or `instagram_id` |
+| Who the customer is | their phone number | a page-scoped id (PSID/IGSID); Mitu asks for a phone when ordering |
+| Conversation id | `<business>:<phone>` | `<business>:messenger-<id>` or `<business>:instagram-<id>` |
+| Skipped | status updates | read receipts, deliveries and echoes of our own replies |
+| Sending a photo | upload, then send with a caption | Meta fetches it from `PUBLIC_URL`; photo first, then the text |
+| Voice replies | yes, with `VOICE_REPLY=true` | text only |
