@@ -221,3 +221,13 @@ Simplest options picked where the brief was open:
 - **Dashboard auth:** each person has their own password (scrypt-hashed) at their business, and signing in returns a session token, valid for 30 days, that the dashboard sends with every request. Only the token's SHA-256 is stored. 10 wrong passwords from one IP lock that IP out for 15 minutes; it's per IP, so a guesser can't lock the owner out. The lockout is in memory and resets on restart. Each business's Meta tokens are stored in the database as plain text; encrypt them at rest if the database ever leaves the server. Media files under `/media` are public but have random 128-bit names.
 - **The simulator** runs in background tasks like WhatsApp and the page polls, so it exercises the exact same path. Simulator chat IDs are `sim-<phone>`.
 - **Menu search** is a fuzzy scan in Python over names, categories and aliases, which is fine for a menu.
+
+## How it works
+
+This section is for developers: how a message travels through Mitu, what each part of the backend owns, and where to change what. Diagrams are [Mermaid](https://mermaid.js.org), which GitHub draws inline. File names link to the code; read the code before changing behaviour, and the **Decisions** above before redoing one.
+
+Three ideas hold the whole app together:
+
+1. **One path for every message.** WhatsApp, Messenger, Instagram, the simulator and `cli.py` all end up in `agent.respond()`. Fix shared behaviour there, never per channel.
+2. **One business at a time.** Every query runs with exactly one business in scope, and the database layer refuses to run one without it.
+3. **The rules live in code, the conversation in the prompt.** The LLM decides what the customer means; the tools decide what's allowed (prices, stock, opening hours, order confirmation).
