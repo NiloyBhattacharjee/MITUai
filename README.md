@@ -231,3 +231,37 @@ Three ideas hold the whole app together:
 1. **One path for every message.** WhatsApp, Messenger, Instagram, the simulator and `cli.py` all end up in `agent.respond()`. Fix shared behaviour there, never per channel.
 2. **One business at a time.** Every query runs with exactly one business in scope, and the database layer refuses to run one without it.
 3. **The rules live in code, the conversation in the prompt.** The LLM decides what the customer means; the tools decide what's allowed (prices, stock, opening hours, order confirmation).
+
+### The system at a glance
+
+```mermaid
+flowchart LR
+    subgraph People
+        C["Customers"]
+        S["Staff and owner"]
+    end
+    subgraph Meta["Meta platform"]
+        WA["WhatsApp Cloud API"]
+        MP["Messenger Platform<br/>(Messenger and Instagram)"]
+    end
+    subgraph Mitu
+        UI["Dashboard and simulator<br/>(React, served by Caddy)"]
+        API["Backend<br/>(FastAPI)"]
+        DB[("SQLite<br/>shop.db")]
+        MEDIA[("media/<br/>voice notes, photos")]
+    end
+    LLM["LLM<br/>Ollama, Anthropic API or Bedrock"]
+    SPEECH["Speech<br/>OpenAI Whisper and TTS, or Amazon Transcribe"]
+    MAIL["SMTP<br/>alerts to the owner"]
+
+    C -- "DMs, voice notes, photos" --> WA & MP
+    WA & MP -- "signed webhooks" --> API
+    API -- "Graph API: replies, photos, audio" --> WA & MP
+    S -- "browser" --> UI -- "/api" --> API
+    API --> DB & MEDIA
+    API -- "prompt + tools" --> LLM
+    API -- "audio" --> SPEECH
+    API -- "handoffs, approvals" --> MAIL
+```
+
+Customers never see Mitu's own address: they write to the business's WhatsApp number, Facebook Page or Instagram account, and Meta forwards each message to Mitu's webhooks. Staff use the dashboard. Everything else (the LLM, speech and email) is called by the backend on the way through.
