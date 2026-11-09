@@ -1009,3 +1009,12 @@ The breakdowns below go from the middle out: the message path first, then the da
 | Overview | `GET /api/analytics?days=30` |
 
 Webhooks come from the `whatsapp` and `messenger` routers, and `/media` is served as static files. The CSV export guards against formula injection: a cell starting with `=`, `+`, `-` or `@` gets a leading `'`.
+
+#### `hours.py`: time in the business's timezone
+
+[`backend/app/hours.py`](backend/app/hours.py)
+
+- **Now:** `local_now()` is the business's wall-clock time (from `timezone` in its settings). Use it, never `datetime.now()`; the tests pin it to 10:00.
+- **Converting:** `to_utc` and `to_local` between the naive UTC in the database and naive local times in the business's zone.
+- **Opening hours:** `periods(day)` parses `"07:00-15:00"` or `"07:00-11:00, 17:00-21:00"` (or `closed`), `is_open(at)`, `spec(day)` and `weekly()`.
+- **Showing it:** `label(at)` gives `"Sat 12 Oct, 13:30"`, with the weekday spelled out so nobody has to work it out.
