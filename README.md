@@ -745,3 +745,19 @@ sequenceDiagram
 ```
 
 The password says who you are, so there are no usernames: each person at a business has their own password. Sessions last 30 days, and a 401 anywhere logs the dashboard out. The lockout is per IP, so a guesser can't lock the owner out.
+
+### Live updates in the dashboard
+
+The dashboard polls instead of using websockets. `useLive(path, ms)` in [`App.jsx`](frontend/src/App.jsx) fetches a path every `ms`, keeps the last answer per path (so going back to a page shows it instantly), and pauses while the tab is hidden.
+
+| Page | Polls | Every |
+|---|---|---|
+| Conversations | chat list, open chat's messages | 2 s |
+| Kitchen / Packing | active orders (plays a sound on a new one) | 3 s |
+| Orders, Approvals | all orders, approvals | 5 s |
+| Sidebar badges | conversations, approvals | 5 s |
+| Bookings | the next 14 days | 10 s |
+| Menu, Overview, orders-paused switch | menu, analytics, settings | 15 s |
+| Simulator | the simulated chat | 1 s |
+
+Browsers slow down timers in background tabs, so the kitchen screen should stay in front for the sound.
