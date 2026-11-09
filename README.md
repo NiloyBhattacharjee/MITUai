@@ -588,3 +588,25 @@ flowchart TD
 ```
 
 Replies to a customer's message never hit this, since the customer just wrote. Everything Mitu starts goes through `pipeline.send_update`, which returns why a message wasn't sent so the dashboard can show it.
+
+### The reminder for an unanswered order summary
+
+```mermaid
+sequenceDiagram
+    participant J as every_minute thread
+    participant P as remind_unconfirmed
+    participant DB as Database
+    participant C as Customer
+    loop every 60 s, for each business in its own scope
+        J->>P: run
+        P->>DB: chats with a pending quote, bot on, active in the last day
+        P->>P: older than quote_reminder_minutes and not reminded?
+        P->>DB: set reminded=True and commit first
+        P->>DB: has the customer written since the quote?
+        alt not written since
+            P->>C: quote_reminder message (inside the 24 h window)
+        end
+    end
+```
+
+It's marked before sending, so a send that fails or a crash halfway never turns into a second nudge.
