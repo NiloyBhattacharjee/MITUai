@@ -489,3 +489,36 @@ flowchart LR
 - **Markers** say what a message was: `[voice note]` (the transcript), `[photo]` (the customer's photo, re-sent as an image each turn), `[photo sent]` (a product photo we sent, kept as text).
 - **Consecutive messages from one side are merged**, since the LLM APIs want turns to alternate.
 - **Tool calls aren't kept between turns.** The model looks things up again, so it never quotes yesterday's stock or price.
+
+### Placing an order: two steps, enforced in code
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Customer
+    participant L as LLM
+    participant T as create_order
+    participant DB as Database
+    C->>L: 2 blue kurtis size M, deliver to Banani, COD
+    L->>T: confirmed=false, items, name, phone, address, payment
+    T->>T: validate: items, stock, options, hours, address, payment
+    T->>DB: conversation.pending_order = args, total, quoted_turn
+    T-->>L: QUOTE_ONLY_NOT_PLACED + summary
+    L->>C: Here's your order... total 2,520. Confirm?
+    C->>L: yes
+    L->>T: confirmed=true
+    T->>T: quoted_turn earlier than this turn?
+    T->>T: validate again (sold out? closed? paused?)
+    alt total changed since the quote
+        T->>DB: new quote, this turn
+        T-->>L: QUOTE_CHANGED_NOT_PLACED + new summary
+    else stock ran out
+        T-->>L: error: not enough left
+    else all good
+        T->>DB: count stock down, insert Order, clear pending_order
+        T-->>L: PLACED, order id, ready time
+        L->>C: Order 41 is placed...
+    end
+```
+
+The guard is `quoted_turn < turn_id`: a quote made in the same turn can't be confirmed, so the model can't quote and place in one breath. The customer must send a message after seeing the summary. Whether that message means yes is the model's call; everything else is checked in code.
