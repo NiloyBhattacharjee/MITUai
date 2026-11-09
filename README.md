@@ -1124,3 +1124,19 @@ flowchart TD
 ```
 
 It costs real money (roughly $1–3 for a full run on Sonnet, free on Ollama), so run it after changing the prompt, the tools or the model, not on every change. When a real chat goes wrong, add it as a case.
+
+### CI/CD
+
+```mermaid
+flowchart LR
+    E["push or pull request"] --> B["Backend: ruff check, pytest"]
+    E --> FE["Frontend: npm ci, npm run build"]
+    B & FE --> M{"push to main?"}
+    M -- "no (pull request)" --> DONE["checks shown on the PR"]
+    M -- "yes" --> I["build backend and frontend images<br/>push to ghcr.io, tagged latest and the commit SHA"]
+    I --> H{"DEPLOY_HOST secret set?"}
+    H -- "no" --> SK["deploy skipped with a notice"]
+    H -- "yes" --> SSH["over SSH: copy docker-compose.yml, business.yaml and .env,<br/>docker compose pull and up -d"]
+```
+
+[`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) needs no secrets for the checks. [`claude.yml`](.github/workflows/claude.yml) is separate: it starts an agent on an issue when it gets the `claude` label or an `@claude` mention.
