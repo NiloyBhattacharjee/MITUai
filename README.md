@@ -522,3 +522,21 @@ sequenceDiagram
 ```
 
 The guard is `quoted_turn < turn_id`: a quote made in the same turn can't be confirmed, so the model can't quote and place in one breath. The customer must send a message after seeing the summary. Whether that message means yes is the model's call; everything else is checked in code.
+
+### The pending quote's lifecycle
+
+A chat holds at most one quote, in `conversations.pending_order`:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Quoted: create_order(confirmed=false)
+    Quoted --> Quoted: customer changes something, quoted again
+    Quoted --> Quoted: price changed at confirmation, re-quoted
+    Quoted --> Reminded: no reply after quote_reminder_minutes, one nudge
+    Reminded --> Quoted: quoted again
+    Quoted --> Placed: create_order(confirmed=true) in a later turn
+    Reminded --> Placed: create_order(confirmed=true)
+    Placed --> [*]: pending_order cleared, Order row created
+```
+
+The stored quote keeps the arguments, the total, the turn it was made in and when, plus `reminded`. Confirming re-runs the validation on the stored arguments, not on anything the model passes in.
