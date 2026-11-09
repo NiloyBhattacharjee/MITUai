@@ -1076,3 +1076,9 @@ Which pages show and what they're called comes from `GET /api/business` (a salon
 - **Frontend image** ([`frontend/Dockerfile`](frontend/Dockerfile)): builds the React app, then serves it with Caddy. [`Caddyfile`](frontend/Caddyfile) sends `/api/*`, `/media/*`, `/webhook` and `/messenger/webhook` to the backend and everything else to `index.html` (so hash routes work on refresh).
 - **HTTPS:** set `SITE_ADDRESS` to a domain and Caddy gets and renews the certificate; the `caddy` volume keeps it across restarts (Let's Encrypt rate-limits re-issuing).
 - **Ollama on Windows with Docker in WSL2:** [`docker-compose.ollama.yml`](docker-compose.ollama.yml) lets the backend reach it.
+
+#### `backup.py`: backups
+
+[`backend/backup.py`](backend/backup.py) writes one `.tar.gz` with a consistent copy of the SQLite database (SQLite's own backup API, safe while the app is writing) and the media folder, and keeps the newest `BACKUP_KEEP` (14). The `backup` container runs it at start and then daily into `./backups`.
+
+A backup on the same disk doesn't survive losing the server: copy the folder off the server too. To restore, stop the stack, put `shop.db` and `media/` back into the `data` volume, and start it again.
