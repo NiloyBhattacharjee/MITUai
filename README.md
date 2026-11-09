@@ -1049,3 +1049,9 @@ One line per option group, the same in the business file and the dashboard:
 - **Money:** `cents(4.50) -> 450` on the way in, `money(450) -> "৳4.50"` on the way out, with the currency of the business in scope. Amounts are never floats in the database.
 - Per-business settings are not here: they're the business file, read through `tenancy.cfg()`.
 - New env vars go in `.env.example` too, with a comment.
+
+#### `shops.py`, `manage.py` and `seed.py`: setting businesses up
+
+- [`shops.py`](backend/app/shops.py): `create(db, id, business, staff, **channels)` makes a business from a parsed business file, with its staff and menu; `add_new_menu_items` adds only items the database doesn't have; `pick` finds a business for command-line tools.
+- [`manage.py`](backend/manage.py): `list`, `add-shop <id> <file> --owner-password`, `update-shop <id> <file>`, `add-staff <id> <name> <password>`, `connect <id> --whatsapp-number-id ... --page-id ...`. Passwords are checked with `auth.strong_enough`.
+- [`seed.py`](backend/seed.py): creates the first business from `.env` and `BUSINESS_FILE` if the database has none, with a few sample orders, bookings or appointments (whichever the business takes). `--if-empty` is what Docker runs at start; `--demo` adds about 60 days of random history to fill the Overview; sample customers fit the business's timezone (Dhaka names and `017` numbers for the shop).
