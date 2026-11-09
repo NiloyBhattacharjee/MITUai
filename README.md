@@ -1055,3 +1055,17 @@ One line per option group, the same in the business file and the dashboard:
 - [`shops.py`](backend/app/shops.py): `create(db, id, business, staff, **channels)` makes a business from a parsed business file, with its staff and menu; `add_new_menu_items` adds only items the database doesn't have; `pick` finds a business for command-line tools.
 - [`manage.py`](backend/manage.py): `list`, `add-shop <id> <file> --owner-password`, `update-shop <id> <file>`, `add-staff <id> <name> <password>`, `connect <id> --whatsapp-number-id ... --page-id ...`. Passwords are checked with `auth.strong_enough`.
 - [`seed.py`](backend/seed.py): creates the first business from `.env` and `BUSINESS_FILE` if the database has none, with a few sample orders, bookings or appointments (whichever the business takes). `--if-empty` is what Docker runs at start; `--demo` adds about 60 days of random history to fill the Overview; sample customers fit the business's timezone (Dhaka names and `017` numbers for the shop).
+
+#### The frontend
+
+[`frontend/src`](frontend/src): React, Vite and Tailwind, with no router or state library.
+
+| File | What's in it |
+|---|---|
+| [`App.jsx`](frontend/src/App.jsx) | `api()` (adds `X-Session`, logs out on 401), `usePoll` and `useLive`, toasts, the login page, the shell with the sidebar, and hash routing (`#/orders`, `#/simulator`) |
+| [`Dashboard.jsx`](frontend/src/Dashboard.jsx) | the pages: Conversations (with "AI used" steps), Orders, Kitchen/Packing, Bookings, Approvals, Menu with its item form |
+| [`Analytics.jsx`](frontend/src/Analytics.jsx) | the Overview: figures with change against the previous period, the revenue chart, top items |
+| [`Simulator.jsx`](frontend/src/Simulator.jsx) | the phone: text, hold-to-record voice, photos |
+| [`ui.jsx`](frontend/src/ui.jsx) | shared pieces: icons, buttons, `Segmented`, `Drawer`, money formatting |
+
+Which pages show and what they're called comes from `GET /api/business` (a salon has no Kitchen, a shop calls the Menu "Products"). In development Vite proxies `/api` and `/media` to the backend; in Docker, Caddy does. CI only builds it (`npm run build`).
