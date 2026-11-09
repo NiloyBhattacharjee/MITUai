@@ -15,7 +15,7 @@ One install runs many businesses, each with its own products, settings, staff, c
 - **Chat simulator** (`#/simulator`, signed-in staff only, since every message runs the paid LLM): a WhatsApp-style phone in the browser, with a hold-to-record mic and a photo button.
 - **Real chats:** WhatsApp through the Cloud API webhook; Messenger and Instagram through the Messenger Platform webhook.
 
-Every channel runs the same code path: `pipeline.py` → `agent.respond()` → LLM with tools.
+Every channel runs the same code path: `pipeline.py` → `agent.respond()` → LLM with tools. [How it works](#how-it-works) has the architecture and data-flow diagrams and a breakdown of each component.
 
 ```
 business.yaml          the demo shop: hours, delivery, payments, fixed messages, products (each business on the install has its own)
