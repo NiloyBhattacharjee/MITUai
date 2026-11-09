@@ -1069,3 +1069,10 @@ One line per option group, the same in the business file and the dashboard:
 | [`ui.jsx`](frontend/src/ui.jsx) | shared pieces: icons, buttons, `Segmented`, `Drawer`, money formatting |
 
 Which pages show and what they're called comes from `GET /api/business` (a salon has no Kitchen, a shop calls the Menu "Products"). In development Vite proxies `/api` and `/media` to the backend; in Docker, Caddy does. CI only builds it (`npm run build`).
+
+#### Docker and Caddy
+
+- **Backend image** ([`backend/Dockerfile`](backend/Dockerfile)): Python 3.12 slim with ffmpeg; starts with `seed.py --if-empty`, then uvicorn on port 8000 behind the proxy.
+- **Frontend image** ([`frontend/Dockerfile`](frontend/Dockerfile)): builds the React app, then serves it with Caddy. [`Caddyfile`](frontend/Caddyfile) sends `/api/*`, `/media/*`, `/webhook` and `/messenger/webhook` to the backend and everything else to `index.html` (so hash routes work on refresh).
+- **HTTPS:** set `SITE_ADDRESS` to a domain and Caddy gets and renews the certificate; the `caddy` volume keeps it across restarts (Let's Encrypt rate-limits re-issuing).
+- **Ollama on Windows with Docker in WSL2:** [`docker-compose.ollama.yml`](docker-compose.ollama.yml) lets the backend reach it.
