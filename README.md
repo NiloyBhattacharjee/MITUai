@@ -973,3 +973,12 @@ The breakdowns below go from the middle out: the message path first, then the da
 - **Send API:** `send_text`, `send_image` (by public URL) and `download` for attachments, using the business's Page token.
 - **Skips:** reads, deliveries and echoes of our own messages, so the assistant never answers itself.
 - **Change it when:** comment replies arrive (issue #16) or staff replies from the Meta inbox should pause the AI (issue #27).
+
+#### `voice.py`: speech in and out
+
+[`backend/app/voice.py`](backend/app/voice.py)
+
+- **Interfaces:** `SpeechToText.transcribe(wav) -> Transcript(text, language, confidence)` and `TextToSpeech.synthesize(text) -> (audio, ext)`.
+- **Providers:** `OpenAISTT` (Whisper, prompted with the menu's item names via `stt_hint`, confidence from segment log-probabilities), `AWSTranscribeSTT` (batch job through S3, cleaned up afterwards) and `OpenAITTS`. `STT_PROVIDER` picks the speech-to-text one.
+- **ffmpeg helpers:** `to_wav` (16 kHz mono for STT), `to_ogg_opus` (what WhatsApp plays as a voice message) and `wav_seconds`. Temp files rather than pipes, because browser recordings need seekable input.
+- **Change it when:** adding a speech provider. `compare_stt.py` runs both on the same recordings to compare text, confidence and speed.
