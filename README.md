@@ -556,3 +556,21 @@ flowchart LR
 ```
 
 The count goes down with one conditional `UPDATE`, so two customers can't both buy the last one even when their turns run at the same moment. An item with stock 0 counts as sold out (`tools.in_stock`). Items without a count are skipped. Counting per size or colour isn't built yet (issue #1).
+
+### Order status and customer updates
+
+```mermaid
+stateDiagram-v2
+    [*] --> new: placed by the assistant
+    new --> preparing: staff, Kitchen or Packing page
+    preparing --> ready
+    ready --> completed
+    new --> cancelled: the customer, through cancel_order
+    new --> cancelled: staff
+    preparing --> cancelled: staff
+    ready --> cancelled: staff
+    cancelled --> new: staff (stock taken again)
+    completed --> [*]
+```
+
+Each time staff move an order, `main.set_order_status` sends the customer the matching message from the business file: `order_<status>_<fulfilment>` if there is one (for example `order_ready_delivery`, "on its way"), otherwise `order_<status>`. A customer can only cancel through the assistant while the order is still `new`; after that it's a person's call.
