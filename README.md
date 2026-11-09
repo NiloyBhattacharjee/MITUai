@@ -461,3 +461,20 @@ flowchart TD
 ```
 
 An empty reply is never sent as-is: `agent.respond` turns it into the handoff message if the chat was handed off, and sends nothing otherwise. On the Anthropic API a refusal also returns empty, after the server-side fallback has already retried it on another model.
+
+### The prompt and tools are built per business
+
+Nothing about a business is hard-coded: the prompt and the tool list are assembled on every turn from its settings file.
+
+```mermaid
+flowchart LR
+    Y["business settings<br/>(business.yaml, stored on the shop)"] --> F{"which sections?"}
+    F -- "fulfilment + payment_methods" --> O["prompt: Ordering steps<br/>tools: create_order, get_order_status, cancel_order"]
+    F -- "reservations" --> B["prompt: Bookings<br/>tools: check_availability, book_table"]
+    F -- "appointments" --> P["prompt: Appointments<br/>tools: appointment_times, book_appointment"]
+    F -- "reservations or appointments" --> MB["tools: my_bookings, cancel_booking"]
+    F -- "allergen_note" --> AL["prompt: Allergies and diets"]
+    ALL["always"] --> X["prompt: style, honesty, facts, time, photos, requests, handoff<br/>tools: search_menu, get_menu, get_item, send_item_photo,<br/>saved_details, request_approval, get_business_info, escalate_to_human"]
+```
+
+`tools.enabled()` decides which tools exist, `tools.specs()` builds their JSON schemas (the `fulfilment` and `payment_method` enums come from the business's own choices), and `agent.system_prompt()` adds only the sections that apply. A salon's assistant is never told about delivery, and couldn't call `create_order` if it tried: `run_tool` rejects tools that aren't enabled.
