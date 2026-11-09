@@ -777,3 +777,20 @@ flowchart LR
 ```
 
 Simulator chats have ids `<business>:sim-<phone>` and show up in Conversations like any other chat. The 24-hour window is always open for them. `cli.py` does the same from a terminal.
+
+### Where the Overview numbers come from
+
+`GET /api/analytics?days=N` in [`main.py`](backend/app/main.py) computes the period and the one before it (same length) with `_period`:
+
+| Figure | How it's counted |
+|---|---|
+| Revenue, orders, average order | orders created in the period that aren't cancelled (totals in cents) |
+| Cancelled | orders created in the period that are |
+| Bookings, covers | bookings created in the period, not cancelled; covers = party sizes |
+| Chats | conversations with a customer message in the period |
+| Conversion | chats that placed an order or a booking, out of all chats |
+| AI handled | chats never flagged and with no staff reply, out of all chats |
+| AI cost, tokens | `llm_usage` rows in the period (one per API call) |
+| Revenue per day, top items, pickup vs delivery, statuses | from the same orders |
+
+"Today" and day boundaries are in the business's timezone. It's computed in Python over the period's rows, which is fine for a small shop; the `ponytail:` comment there says when to move it to SQL.
