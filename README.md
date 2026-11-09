@@ -289,3 +289,17 @@ flowchart TB
 ```
 
 The backend has no published port: only Caddy reaches it, which is also why uvicorn trusts the forwarded client IP (`--proxy-headers`, used by the login lockout). `business.yaml` is mounted read-only into the backend for the first start. See [`docker-compose.yml`](docker-compose.yml), [`frontend/Caddyfile`](frontend/Caddyfile) and [`backend/Dockerfile`](backend/Dockerfile).
+
+### Processes and threads
+
+Everything runs in **one uvicorn process**. Inside it:
+
+| What | Where | Why it's separate |
+|---|---|---|
+| HTTP requests (dashboard API, webhooks) | uvicorn workers | Webhooks must answer Meta fast, so they only store the message and queue it |
+| Handling a message (LLM, tools, reply) | FastAPI `BackgroundTasks` | An LLM turn takes seconds; Meta retries if the webhook is slow |
+| Re-running messages a restart cut off | `pipeline.resume_unfinished`, a thread started once at startup | So a crash mid-reply doesn't lose a customer's message |
+| The every-minute job (unanswered-quote reminders) | `main.every_minute`, a daemon thread | Loops over every business, each in its own scope |
+| Owner alert emails | one short thread per email in [`notify.py`](backend/app/notify.py) | The customer never waits on SMTP |
+
+Two locks keep concurrent work safe: `agent._locks` runs one agent turn at a time per chat (customers send bursts of messages), and `tools._booking_lock` makes checking a free appointment time and booking it one step. Both assume one process; the `ponytail:` comments next to them say what to change for several workers.
