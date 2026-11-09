@@ -916,3 +916,13 @@ The breakdowns below go from the middle out: the message path first, then the da
 - **Keeps:** one turn at a time per chat (`_locks`), the customer's message stored before anything can fail, the bot-off switch respected (staff are handling the chat), every tool call and API call recorded.
 - **On failure:** the chat is flagged for a person and the customer gets the business's `messages.error`, never a stack trace or silence.
 - **Change it when:** the assistant's behaviour or wording changes. Prompt changes need an eval run (`python eval.py`), since the fake LLM in the tests can't tell whether the real model behaves.
+
+#### `tools.py`: what the assistant can do
+
+[`backend/app/tools.py`](backend/app/tools.py)
+
+- **Owns:** every action the LLM can take, as plain functions `fn(ctx, **args) -> dict`, plus the JSON schemas it sees (`specs`). `ctx` carries the database session, the conversation and the id of the message being answered.
+- **Groups:** menu (`search_menu`, `get_menu`, `get_item`, `send_item_photo`), orders (`saved_details`, `create_order`, `get_order_status`, `cancel_order`), bookings and appointments, and the business (`get_business_info`, `request_approval`, `escalate_to_human`).
+- **Rules it enforces:** prices and totals in cents from the database, stock and sold-out, required options, opening hours and lead time, delivery address, payment method, the two-step order, one chat's own orders and bookings only.
+- **Results talk to the model:** errors come back as `{"error", "problems"}` and successes carry a `status` like `PLACED` or `QUOTE_ONLY_NOT_PLACED` and often an `instruction`, which is how the code steers what the model says next.
+- **Change it when:** the assistant needs a new ability. Add the function, its entry in `FUNCTIONS` and its schema, decide in `enabled()` which businesses get it, write a test, then run the eval.
