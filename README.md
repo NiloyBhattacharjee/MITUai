@@ -991,3 +991,21 @@ The breakdowns below go from the middle out: the message path first, then the da
 - **Sessions:** `log_in` returns a random token and stores only its SHA-256, so a leaked database hands out no live sessions. `session(token)` gives back the business and the person, for 30 days. `log_out` deletes it.
 - **Why tokens:** checking a slow scrypt hash on every 2-second poll would be too slow, so the token stands in for the password.
 - **Change it when:** adding roles (everyone at a business can do everything today) or session expiry on password change.
+
+#### `main.py`: the dashboard API
+
+[`backend/app/main.py`](backend/app/main.py) creates the FastAPI app, the `SignedIn` middleware (session → scope), the background threads, and these routes. All `/api` routes except login need a session.
+
+| Area | Routes |
+|---|---|
+| Signing in | `POST /api/login`, `POST /api/logout`, `GET /api/me`, `GET /api/business` (name, currency, which pages apply) |
+| Simulator | `POST /api/sim/message`, `/voice`, `/photo`, `GET /api/sim/{phone}/messages` |
+| Conversations | `GET /api/conversations`, `GET .../{id}/messages` (with "AI used" and cost), `GET /api/messages/{id}/steps`, `POST .../{id}/reply`, `POST .../{id}/bot`, `GET /api/saved-replies` |
+| Orders | `GET /api/orders` (`?active=true` for the kitchen), `GET /api/orders/export.csv`, `PATCH /api/orders/{id}` (status, tells the customer) |
+| Settings | `GET` and `PUT /api/settings` (`orders_paused`) |
+| Bookings | `GET /api/bookings?days=14`, `PATCH /api/bookings/{id}` |
+| Approvals | `GET /api/approvals`, `POST /api/approvals/{id}` (approve or decline) |
+| Menu | `GET` and `POST /api/menu`, `PATCH` and `DELETE /api/menu/{id}`, `POST /api/menu/{id}/photo` |
+| Overview | `GET /api/analytics?days=30` |
+
+Webhooks come from the `whatsapp` and `messenger` routers, and `/media` is served as static files. The CSV export guards against formula injection: a cell starting with `=`, `+`, `-` or `@` gets a leading `'`.
