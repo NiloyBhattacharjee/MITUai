@@ -303,3 +303,25 @@ Everything runs in **one uvicorn process**. Inside it:
 | Owner alert emails | one short thread per email in [`notify.py`](backend/app/notify.py) | The customer never waits on SMTP |
 
 Two locks keep concurrent work safe: `agent._locks` runs one agent turn at a time per chat (customers send bursts of messages), and `tools._booking_lock` makes checking a free appointment time and booking it one step. Both assume one process; the `ponytail:` comments next to them say what to change for several workers.
+
+### Which business a request belongs to
+
+```mermaid
+flowchart LR
+    subgraph In["Where work comes from"]
+        D["Dashboard request<br/>X-Session header"]
+        W["WhatsApp webhook<br/>metadata.phone_number_id"]
+        M["Messenger / Instagram webhook<br/>entry.id = Page or IG account"]
+        J["Background job<br/>every_minute, resume_unfinished"]
+    end
+    D -- "auth.session(token)" --> SC
+    W -- "whatsapp.shop_for(...)" --> SC
+    M -- "whatsapp.shop_for(...)" --> SC
+    J -- "loops over all shops" --> SC
+    SC["tenancy.scope(shop)<br/>a ContextVar"]
+    SC --> Q["Every SELECT, UPDATE, DELETE<br/>on a Scoped table"]
+    Q -- "db._only_this_cafe adds<br/>WHERE shop_id = shop in scope" --> R[("rows of this business only")]
+    Q -. "no business in scope" .-> X["RuntimeError<br/>never an unfiltered query"]
+```
+
+The scope is a `ContextVar` in [`tenancy.py`](backend/app/tenancy.py), so it follows the request or job and can't leak between threads. New rows get `shop_id` filled in automatically. With a single business on the install, `shop_for` sends every webhook to it, so the channel ids are optional.
