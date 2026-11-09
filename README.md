@@ -574,3 +574,17 @@ stateDiagram-v2
 ```
 
 Each time staff move an order, `main.set_order_status` sends the customer the matching message from the business file: `order_<status>_<fulfilment>` if there is one (for example `order_ready_delivery`, "on its way"), otherwise `order_<status>`. A customer can only cancel through the assistant while the order is still `new`; after that it's a person's call.
+
+### The 24-hour window
+
+Meta only allows free-form messages to a customer within 24 hours of their last message; after that it needs a template, which isn't built yet (issue #11).
+
+```mermaid
+flowchart TD
+    S["Mitu wants to message a customer first<br/>(status update, approval answer, reminder, staff reply)"] --> W{"pipeline.window_open:<br/>simulator, or customer wrote in the last 24 h?"}
+    W -- "yes" --> D["deliver, then store it in the chat"]
+    W -- "no" --> N["don't send: return a note for staff,<br/>or 409 on a staff reply"]
+    D -- "send failed" --> F["note: sending failed"]
+```
+
+Replies to a customer's message never hit this, since the customer just wrote. Everything Mitu starts goes through `pipeline.send_update`, which returns why a message wasn't sent so the dashboard can show it.
