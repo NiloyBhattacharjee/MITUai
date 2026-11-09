@@ -945,3 +945,13 @@ The breakdowns below go from the middle out: the message path first, then the da
 - **Filter:** every business-owned model subclasses `db.Scoped`. A SQLAlchemy `do_orm_execute` hook (`_only_this_cafe`) adds `shop_id = <in scope>` to every SELECT, UPDATE and DELETE that touches one, including joins and aliases. New rows get `shop_id` by default.
 - **Rule:** never add a manual `shop_id` filter as a workaround, and never query a `Scoped` table outside a scope. A new business table subclasses `Scoped` and gets a test in `tests/test_tenancy.py` proving one business can't see another's rows.
 - **Why it's built this way:** a forgotten `WHERE` can't leak another shop's orders, because there's no `WHERE` to forget.
+
+#### `db.py`: models and the database
+
+[`backend/app/db.py`](backend/app/db.py)
+
+- **Platform tables (not scoped):** `Shop` (settings and channel ids/tokens), `Staff`, `LoginSession`, `SeenWhatsAppMessage` (the webhook inbox).
+- **Business tables (scoped):** `MenuItem`, `Conversation`, `Message`, `Order`, `Booking`, `Approval`, `Setting`, `ToolCall`, `LlmUsage`. See the [data model](#data-model).
+- **Conventions:** money in integer cents, times in naive UTC (`db.now()`), status lists in `ORDER_STATUSES`, `BOOKING_STATUSES`, `APPROVAL_KINDS`. SQLite by default (`DATABASE_URL`), with a 30-second lock timeout for concurrent writers.
+- **Migrations:** `init_db()` creates tables and adds missing columns; it refuses a database from the old single-business version instead of guessing.
+- **Change it when:** a new field or table. Nullable new columns arrive on their own; anything else needs a migration plan.
