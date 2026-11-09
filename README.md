@@ -936,3 +936,12 @@ The breakdowns below go from the middle out: the message path first, then the da
 - **Usage:** each API call appends tokens (including cache reads and writes) to `usage`; `cost_usd` prices it from `PRICES`, so the Overview shows the real cost per business. Ollama costs 0; an unknown model costs `None` rather than a guess.
 - **Images:** customer photos go to each provider in its own format.
 - **Change it when:** adding a provider or a model's price. Tests swap the whole thing for `FakeLLM` (see Testing).
+
+#### `tenancy.py` and `db.Scoped`: one business per query
+
+[`backend/app/tenancy.py`](backend/app/tenancy.py), [`backend/app/db.py`](backend/app/db.py)
+
+- **Scope:** `tenancy.scope(shop, staff)` is a context manager over two `ContextVar`s. `shop()`, `shop_id()`, `cfg()` (the business's settings) and `staff()` read them; `shop()` raises when nothing is in scope.
+- **Filter:** every business-owned model subclasses `db.Scoped`. A SQLAlchemy `do_orm_execute` hook (`_only_this_cafe`) adds `shop_id = <in scope>` to every SELECT, UPDATE and DELETE that touches one, including joins and aliases. New rows get `shop_id` by default.
+- **Rule:** never add a manual `shop_id` filter as a workaround, and never query a `Scoped` table outside a scope. A new business table subclasses `Scoped` and gets a test in `tests/test_tenancy.py` proving one business can't see another's rows.
+- **Why it's built this way:** a forgotten `WHERE` can't leak another shop's orders, because there's no `WHERE` to forget.
