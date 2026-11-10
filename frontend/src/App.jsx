@@ -208,7 +208,7 @@ function Shell({ page, shop }) {
       </header>
 
       <main className="min-w-0 px-4 pt-6 pb-28 md:px-10 md:pt-10 md:pb-12">
-        <div key={current.id} className="enter max-w-6xl mx-auto">{cloneElement(current.el, { title: current.label })}</div>
+        <div key={current.id} className="enter max-w-6xl mx-auto">{cloneElement(current.el, { title: current.label, shop })}</div>
       </main>
 
       <nav style={{ gridTemplateColumns: `repeat(${pages.length}, minmax(0, 1fr))` }}
