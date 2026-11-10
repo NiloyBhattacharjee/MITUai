@@ -1,4 +1,4 @@
-"""Speech-to-text (OpenAI Whisper), plus ffmpeg helpers."""
+"""Speech-to-text (OpenAI gpt-4o-transcribe, or Whisper), plus ffmpeg helpers."""
 import io
 import math
 import subprocess
@@ -54,16 +54,26 @@ def stt_hint() -> str:
 
 
 class OpenAISTT:
+    """gpt-4o-transcribe by default: far better than whisper-1 outside the big languages (Bangla among them).
+    whisper-1 is still there with OPENAI_STT_MODEL=whisper-1. A business can set voice_language (e.g. bn) when nearly all
+    its customers speak one language; otherwise the model detects it."""
+
     def transcribe(self, audio_bytes: bytes) -> Transcript:
-        r = httpx.post(f"{OPENAI_URL}/transcriptions", timeout=120,
-                       headers={"Authorization": f"Bearer {env('OPENAI_API_KEY')}"},
-                       data={"model": env("OPENAI_STT_MODEL", "whisper-1"), "response_format": "verbose_json", "prompt": stt_hint()},
-                       files={"file": ("voice.wav", audio_bytes, "audio/wav")})
+        model = env("OPENAI_STT_MODEL", "gpt-4o-transcribe")
+        whisper = model.startswith("whisper")
+        lang = cfg().get("voice_language")
+        data = {"model": model, "prompt": stt_hint(), **({"language": lang} if lang else {}),
+                **({"response_format": "verbose_json"} if whisper else {"response_format": "json", "include[]": "logprobs"})}
+        r = httpx.post(f"{OPENAI_URL}/transcriptions", timeout=120, headers={"Authorization": f"Bearer {env('OPENAI_API_KEY')}"},
+                       data=data, files={"file": ("voice.wav", audio_bytes, "audio/wav")})
         r.raise_for_status()
         j = r.json()
-        segs = j.get("segments") or []
-        conf = sum(math.exp(s["avg_logprob"]) * (1 - s.get("no_speech_prob", 0)) for s in segs) / len(segs) if segs else None
-        return Transcript(j.get("text", "").strip(), j.get("language"), conf)
+        if whisper:
+            segs = j.get("segments") or []
+            conf = sum(math.exp(s["avg_logprob"]) * (1 - s.get("no_speech_prob", 0)) for s in segs) / len(segs) if segs else None
+            return Transcript(j.get("text", "").strip(), j.get("language"), conf)
+        probs = [math.exp(t["logprob"]) for t in j.get("logprobs") or []]  # one per token of the transcript
+        return Transcript(j.get("text", "").strip(), lang, sum(probs) / len(probs) if probs else None)
 
 
 def get_stt() -> OpenAISTT:
