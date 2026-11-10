@@ -14,7 +14,7 @@ log = logging.getLogger(__name__)
 MAX_STEPS = 8
 
 # Claude API list prices, $ per million tokens: (input, output, cache read). Cache writes cost 1.25x input.
-# Bedrock bills its own (similar) prices; Ollama runs locally for free.
+# Ollama runs locally for free.
 PRICES = {"claude-fable-5-1": (10, 50, 1), "claude-opus-5-5": (4, 20, 0.2), "claude-opus-5": (5, 25, 0.5),
           "claude-opus-4-8": (5, 25, 0.5), "claude-sonnet-5-5": (2, 10, 0.2), "claude-sonnet-5": (2, 10, 0.2),
           "claude-haiku-4-5": (1, 5, 0.1)}
@@ -38,34 +38,6 @@ def _b64(image: dict) -> str:
 def _usage(model, inp=0, out=0, read=0, write=0) -> dict:
     return {"model": model, "input_tokens": inp or 0, "output_tokens": out or 0,
             "cache_read_tokens": read or 0, "cache_write_tokens": write or 0}
-
-
-class BedrockLLM:
-    def __init__(self):
-        import boto3
-        self.client = boto3.client("bedrock-runtime", region_name=env("AWS_REGION", "us-east-1"))
-        self.model = env("BEDROCK_MODEL_ID", "anthropic.claude-opus-5-5")
-
-    def run(self, system, history, tools, call_tool, usage=None):
-        messages = [{"role": m["role"], "content": [
-            *({"image": {"format": i["mime"].split("/")[1], "source": {"bytes": i["data"]}}} for i in m.get("images") or []),
-            {"text": m["text"]}]} for m in history]
-        tool_config = {"tools": [{"toolSpec": {"name": t["name"], "description": t["description"],
-                                               "inputSchema": {"json": t["input_schema"]}}} for t in tools]}
-        for _ in range(MAX_STEPS):
-            r = self.client.converse(modelId=self.model, system=[{"text": system}], messages=messages,
-                                     toolConfig=tool_config, inferenceConfig={"maxTokens": 4096})
-            if usage is not None:
-                usage.append(_usage(self.model, r["usage"]["inputTokens"], r["usage"]["outputTokens"]))
-            msg = r["output"]["message"]
-            messages.append(msg)
-            uses = [b["toolUse"] for b in msg["content"] if "toolUse" in b]
-            if r["stopReason"] != "tool_use" or not uses:
-                return "".join(b.get("text", "") for b in msg["content"]).strip()
-            messages.append({"role": "user", "content": [
-                {"toolResult": {"toolUseId": u["toolUseId"], "content": [{"text": json.dumps(call_tool(u["name"], u["input"]), ensure_ascii=False)}]}}
-                for u in uses]})
-        return ""
 
 
 class AnthropicLLM:
@@ -145,5 +117,5 @@ _llm = None
 def get_llm():
     global _llm
     if _llm is None:
-        _llm = {"anthropic": AnthropicLLM, "bedrock": BedrockLLM}.get(LLM_PROVIDER, OllamaLLM)()
+        _llm = AnthropicLLM() if LLM_PROVIDER == "anthropic" else OllamaLLM()
     return _llm

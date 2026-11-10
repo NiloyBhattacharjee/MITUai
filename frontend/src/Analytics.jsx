@@ -108,7 +108,6 @@ export default function Analytics({ shop = {} }) {
   const loading = !fresh
   const c = data?.current, p = data?.previous
   const delta = (k) => data && <span title={`Compared with the previous ${days} days`}><Delta now={c[k]} before={p[k]} /></span>
-  const bookings = shop.tables !== false || shop.appointments
 
   return (
     <>
@@ -117,11 +116,11 @@ export default function Analytics({ shop = {} }) {
       </PageHeader>
 
       <div className={cx('space-y-6 transition-opacity', loading && 'opacity-50')}>
-        <div className={cx('grid grid-cols-2 lg:grid-cols-3 gap-px overflow-hidden rounded-2xl border border-line bg-line', bookings ? 'xl:grid-cols-6' : 'xl:grid-cols-5')}>
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-px overflow-hidden rounded-2xl border border-line bg-line">
           <Stat label="Revenue" value={c ? money(c.revenue) : '–'} foot={delta('revenue')} />
           <Stat label="Orders" value={c?.orders ?? '–'} foot={delta('orders')} />
           <Stat label="Average order" value={c ? money(c.avg_order) : '–'} foot={delta('avg_order')} />
-          {bookings && <Stat label="Bookings" value={c?.bookings ?? '–'} foot={c && plural(c.covers, 'guest')} />}
+          <Stat label="Cancelled" value={c?.cancelled ?? '–'} foot={delta('cancelled')} />
           <Stat label="Handled by AI" value={c ? `${c.ai_handled_pct}%` : '–'}
             foot={c && `${plural(c.chats, 'chat')} · ${c.conversion_pct}% ordered`} />
           <Stat label="AI cost" value={c ? `$${c.ai_cost_usd.toFixed(2)}` : '–'}

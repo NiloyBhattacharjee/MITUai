@@ -118,34 +118,18 @@ const DEMOS = [
   },
   {
     id: 'cafe', label: 'Café', name: 'Little Fern Café', where: 'Newtown, Sydney · WhatsApp',
-    blurb: 'Coffee, breakfast and dinner Thursday to Saturday. Pickup orders with required options, allergens, table bookings.',
+    blurb: 'Coffee, breakfast and dinner Thursday to Saturday. Pickup orders with required options, allergens, voice notes.',
     lines: [
       ['them', '🎤 Voice note · 0:04'],
       ['mitu', 'Heard: “two flat whites, one with oat, for pickup.” Regular size? That’s $10.80, ready in 15 min.'],
-      ['them', 'yes! and a table for 4 on saturday 7pm?', 'order'],
-      ['mitu', 'Order #87 confirmed ✓ And a table for 4 this Saturday at 19:00 is booked for you.', 'booking'],
+      ['them', 'yes please!', 'order'],
+      ['mitu', 'Order #87 confirmed ✓ Two flat whites, one oat, ready at the counter in 15 minutes.', 'ready'],
       ['them', 'is the risotto gluten free?'],
       ['mitu', 'The Mushroom Risotto has no gluten ingredients, but our kitchen handles flour, so I can’t promise it’s safe for coeliacs.'],
     ],
     cards: {
       order: { icon: 'kitchen', title: 'Kitchen · New', lines: ['2 × Flat White (1 oat)', 'Pickup · 15 min', '$10.80'], tone: 'info' },
-      booking: { icon: 'bookings', title: 'Table booked', lines: ['Saturday 19:00', '4 people · 90 min'], tone: 'ok' },
-    },
-  },
-  {
-    id: 'salon', label: 'Salon', name: 'Bloom Hair & Beauty', where: 'Newtown, Sydney · Instagram',
-    blurb: 'Cuts, colour, nails and brows by appointment with named staff. Exceptions go to a person to approve.',
-    lines: [
-      ['them', 'can i get a gel manicure tomorrow afternoon?'],
-      ['mitu', 'Mei has 14:00 or 15:30 tomorrow for a Gel Manicure ($55, 45 min). Which suits you?'],
-      ['them', '15:30. also my colour last week went wrong, can i get a refund?', 'booking'],
-      ['mitu', 'Booked: Gel Manicure with Mei, tomorrow 15:30 ✓ I’ve passed the refund to the team; they’ll reply right here.', 'approval'],
-      ['them', 'thank you!!'],
-      ['mitu', 'You’re welcome! See you tomorrow 💅'],
-    ],
-    cards: {
-      booking: { icon: 'bookings', title: 'Appointment', lines: ['Gel Manicure with Mei', 'Tomorrow 15:30 · 45 min'], tone: 'ok' },
-      approval: { icon: 'approvals', title: 'Needs approval', lines: ['Refund request', 'Full Colour, last week'], tone: 'warn' },
+      ready: { icon: 'check', title: 'Customer told', lines: ['Order #87 · Pickup', 'Ready 15 min after ordering'], tone: 'ok' },
     },
   },
 ]
@@ -155,11 +139,9 @@ const FEATURES = [
   ['orders', 'Takes orders end to end', 'Pickup or delivery, cash on delivery or bKash, today or a later day. Nothing is placed until the customer says yes.'],
   ['products', 'Never oversells', 'Stock counts down with every order and goes back up when one is cancelled. The last one is never sold twice.'],
   ['mic', 'Voice notes and photos', 'Customers can talk instead of type, or send a screenshot of a post: “how much is this one?”'],
-  ['users', 'Hands off to a person', 'Complaints, odd requests or “can I talk to someone?” go to your team, and the AI steps back in that chat.'],
-  ['approvals', 'You approve the exceptions', 'Refunds, discounts and big groups wait for a yes from staff. The customer hears back in their chat.'],
+  ['users', 'Hands off to a person', 'Complaints, refunds, odd requests or “can I talk to someone?” go to your team, and the AI steps back in that chat.'],
   ['kitchen', 'Live packing board', 'Orders land in New, Preparing and Ready columns with a sound. Pause online orders with one button.'],
   ['overview', 'Know your numbers', 'Revenue, top items, pickup vs delivery, how much the AI handled and what it cost, against last period.'],
-  ['bookings', 'Bookings and appointments', 'Tables for cafés, appointments with named staff for salons, all inside your opening hours.'],
 ]
 
 const TONE = { info: 'text-info bg-info/10', ok: 'text-ok bg-ok/10', warn: 'text-warn bg-warn/10' }
@@ -204,8 +186,8 @@ function Demo() {
   )
 }
 
-const ASKS = ['price?', 'is M available?', 'delivery charge outside Dhaka?', 'COD?', 'table for 4 tonight?', 'how much is this one? 📷',
-  'any oat milk?', 'can I move my appointment?', 'when will my order arrive?', 'is it gluten free?', '🎤 voice note', 'bKash number?']
+const ASKS = ['price?', 'is M available?', 'delivery charge outside Dhaka?', 'COD?', 'how much is this one? 📷',
+  'any oat milk?', 'when will my order arrive?', 'is it gluten free?', '🎤 voice note', 'bKash number?']
 
 const Brand = () => (
   <a href="#top" className="flex items-center gap-2.5">
@@ -297,7 +279,7 @@ export default function Landing() {
           <Reveal className="text-center max-w-2xl mx-auto mb-10">
             <p className="text-sm font-medium text-brand">Business demos</p>
             <h2 className="mt-2 text-3xl sm:text-4xl font-semibold tracking-tight">One assistant, any business that sells in chat</h2>
-            <p className="mt-4 text-muted leading-relaxed">The same Mitu runs a clothing shop, a café and a salon. Pick one and watch a real conversation play out.</p>
+            <p className="mt-4 text-muted leading-relaxed">The same Mitu runs a clothing shop and a café. Pick one and watch a real conversation play out.</p>
           </Reveal>
           <Demo />
         </div>
@@ -314,7 +296,7 @@ export default function Landing() {
           {[
             ['products', 'Describe your business', 'Products, prices, stock, delivery zones, payment methods and hours, in one settings file or the dashboard.'],
             ['send', 'Connect your channels', 'Your WhatsApp number, Facebook Page and Instagram account. Every channel runs the same assistant.'],
-            ['overview', 'Watch the orders come in', 'Follow every chat live, step in with one click, approve exceptions and see what sold.'],
+            ['overview', 'Watch the orders come in', 'Follow every chat live, step in with one click and see what sold.'],
           ].map(([icon, title, text], i) => (
             <Reveal key={title} delay={i * 150} className="relative text-center">
               <span className="relative mx-auto w-16 h-16 rounded-2xl bg-ink text-inverse grid place-items-center shadow-lg"><Icon name={icon} className="w-6 h-6" />
@@ -326,7 +308,7 @@ export default function Landing() {
           ))}
         </div>
         <div className="mt-20 grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[[3, '', 'channels: WhatsApp, Messenger, Instagram'], [3, '', 'kinds of business, one install'], [15, '', 'tools the AI can use'], [24, '/7', 'answering, even at 3 am']].map(([n, s, label]) => (
+          {[[3, '', 'channels: WhatsApp, Messenger, Instagram'], [2, '', 'kinds of business, one install'], [10, '', 'tools the AI can use'], [24, '/7', 'answering, even at 3 am']].map(([n, s, label]) => (
             <Reveal key={label} className="card p-6 text-center">
               <div className="text-4xl font-semibold tracking-tight text-brand tabular-nums"><CountUp to={n} suffix={s} /></div>
               <div className="mt-2 text-sm text-muted">{label}</div>

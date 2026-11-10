@@ -5,8 +5,7 @@ from pathlib import Path
 
 _tmp = Path(tempfile.mkdtemp())
 os.environ.update(DATABASE_URL=f"sqlite:///{_tmp / 'test.db'}", MEDIA_DIR=str(_tmp / "media"),
-                  WHATSAPP_APP_SECRET="test-secret", WHATSAPP_VERIFY_TOKEN="verify-me", VOICE_REPLY="false", ALERT_EMAIL="",
-                  PUBLIC_URL="https://shop.test")
+                  WHATSAPP_APP_SECRET="test-secret", WHATSAPP_VERIFY_TOKEN="verify-me", PUBLIC_URL="https://shop.test")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import hashlib  # noqa: E402
@@ -52,7 +51,7 @@ def cafe():
 
 @pytest.fixture(autouse=True)
 def clock(monkeypatch, db):
-    """The café's clock reads 10:00 today, so order and booking rules don't depend on when the tests run."""
+    """The café's clock reads 10:00 today, so order rules don't depend on when the tests run."""
     now = datetime.now(hours.tz()).replace(hour=10, minute=0, second=0, microsecond=0, tzinfo=None)  # open at 10:00 every day
     monkeypatch.setattr(hours, "local_now", lambda: now)
     return now

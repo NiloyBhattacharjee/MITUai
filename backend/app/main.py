@@ -6,18 +6,17 @@ import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, time, timedelta
 from time import monotonic, sleep
-from typing import Annotated, Literal
+from typing import Annotated
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Form, Header, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select
 
 from . import agent, auth, config, hours, messenger, options, pipeline, tenancy, tools, whatsapp
 from .config import MEDIA_DIR, cents
-from .db import (BOOKING_STATUSES, ORDER_STATUSES, Approval, Booking, Conversation, LlmUsage, MenuItem, Message, Order, Session,
-                 Setting, Shop, ToolCall, init_db, now)
+from .db import ORDER_STATUSES, Conversation, LlmUsage, MenuItem, Message, Order, Session, Setting, Shop, ToolCall, init_db, now
 from .tenancy import cfg
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -139,16 +138,13 @@ def me(who: str = dash):
 def business():
     c = cfg()
     return {"id": tenancy.shop_id(), "name": c["name"], "agent_name": c["agent_name"], "currency": c.get("currency", "$"),
-            # which dashboard pages apply: a salon has no kitchen, a shop no table bookings
-            "orders": tools.sells(), "tables": tools.tables(), "appointments": bool(tools.appts()), "labels": labels(),
+            "orders": tools.sells(), "labels": labels(),  # orders: whether the Kitchen/Packing and Orders pages apply
             "try_messages": c.get("try_messages", [])}
 
 
 def labels() -> dict:
-    """Page names that fit the business; `labels` in its business file overrides them."""
-    shop_only = tools.sells() and not tools.tables()
-    menu = "Products" if shop_only else "Services" if tools.appts() and not tools.sells() else "Menu"
-    return {"kitchen": "Packing" if shop_only else "Kitchen", "menu": menu, **cfg().get("labels", {})}
+    """Page names: a shop's by default; `labels` in the business file overrides them (the café says Kitchen and Menu)."""
+    return {"kitchen": "Packing", "menu": "Products", **cfg().get("labels", {})}
 
 
 # --- simulator (signed in only: every message runs the paid LLM and can place real orders) ------
@@ -211,7 +207,7 @@ def sim_messages(phone: str):
 
 # --- public demo (no sign-in: website visitors chat with the DEMO_SHOP business) --------------------------------
 # It runs the paid LLM for strangers, so it's off unless DEMO_SHOP is set, each browser and IP gets
-# DEMO_MESSAGES_PER_VISITOR messages, and everyone together DEMO_MESSAGES_PER_DAY. It never emails anyone (notify.py).
+# DEMO_MESSAGES_PER_VISITOR messages, and everyone together DEMO_MESSAGES_PER_DAY.
 
 _demo_used: dict[str, int] = {}  # "visitor:<id>" / "ip:<ip>" / "day:<date>" -> messages
 # ponytail: in-memory, one process, so a restart resets the counts; move to the database if the demo gets abused.
@@ -250,7 +246,7 @@ def demo_info():
     shop = demo_shop()
     c = shop.config
     return {"name": c["name"], "agent_name": c["agent_name"], "about": c.get("about", ""), "try_messages": c.get("try_messages", []),
-            "messages_per_visitor": config.DEMO_PER_VISITOR, "voice": config.STT_PROVIDER == "aws" or bool(config.env("OPENAI_API_KEY"))}
+            "messages_per_visitor": config.DEMO_PER_VISITOR, "voice": bool(config.env("OPENAI_API_KEY"))}
 
 
 @app.post("/api/demo/message")
@@ -457,7 +453,7 @@ def get_settings():
 
 @app.put("/api/settings", dependencies=[dash])
 def put_settings(body: Settings):
-    """orders_paused: the assistant stops taking orders (bookings and questions carry on)."""
+    """orders_paused: the assistant stops taking orders (questions carry on)."""
     with Session() as db:
         row = db.scalar(select(Setting).where(Setting.key == "orders_paused")) or Setting(key="orders_paused")
         row.value = body.orders_paused
@@ -466,101 +462,13 @@ def put_settings(body: Settings):
     return body
 
 
-# --- bookings ------------------------------------------------------------------------------------
-
-APPOINTMENT_CANCELLED = "Your {service} appointment on {when} has been cancelled. Message us here if you have any questions."
-
-
-def booking_row(b: Booking) -> dict:
-    return {"id": b.id, "customer_name": b.customer_name, "phone": b.phone, "party_size": b.party_size, "at": iso(b.at),
-            "notes": b.notes, "status": b.status, "conversation_id": b.conversation_id,
-            "service": b.service, "provider": b.provider, "minutes": b.minutes}
-
-
-@app.get("/api/bookings", dependencies=[dash])
-def bookings(days: int = Query(14, ge=1, le=90)):
-    """Bookings from the start of today (business time) for the next `days` days."""
-    start = hours.to_utc(datetime.combine(hours.local_now().date(), time()))
-    with Session() as db:
-        rows = db.scalars(select(Booking).where(Booking.at >= start, Booking.at < start + timedelta(days=days)).order_by(Booking.at))
-        return [booking_row(b) for b in rows]
-
-
-@app.patch("/api/bookings/{booking_id}", dependencies=[dash])
-def set_booking_status(booking_id: int, body: Status):
-    if body.status not in BOOKING_STATUSES:
-        raise HTTPException(400, f"status must be one of {BOOKING_STATUSES}")
-    with Session() as db:
-        b = _get(db, Booking, booking_id)
-        old, b.status = b.status, body.status
-        db.commit()
-        note = None
-        if body.status == "cancelled" and old != "cancelled" and (conv := db.get(Conversation, b.conversation_id or "")):
-            msgs = cfg()["messages"]
-            text = (msgs.get("appointment_cancelled", APPOINTMENT_CANCELLED) if b.service_id else msgs["booking_cancelled"]).format(
-                when=hours.label(hours.to_local(b.at)), party_size=b.party_size, service=b.service)
-            note = pipeline.send_update(db, conv, text)
-    return {"ok": True, "note": note}
-
-
-# --- approvals ----------------------------------------------------------------------------------
-
-def approval_row(db, a: Approval) -> dict:
-    conv, order, d = db.get(Conversation, a.conversation_id), a.order_id and db.get(Order, a.order_id), a.details or {}
-    return {"id": a.id, "kind": a.kind, "summary": a.summary, "status": a.status, "note": a.note, "decided_by": a.decided_by,
-            "created_at": iso(a.created_at), "decided_at": a.decided_at and iso(a.decided_at), "conversation_id": a.conversation_id,
-            "channel": conv and conv.channel, "customer": conv and conv.phone, "order": order and order_row(order),
-            "booking": d.get("at") and {**d, "when": hours.label(datetime.fromisoformat(d["at"]))}}
-
-
-@app.get("/api/approvals", dependencies=[dash])
-def approvals():
-    """Pending requests, oldest first, then the 30 most recently decided."""
-    with Session() as db:
-        pending = db.scalars(select(Approval).where(Approval.status == "pending").order_by(Approval.id)).all()
-        done = db.scalars(select(Approval).where(Approval.status != "pending").order_by(Approval.decided_at.desc()).limit(30)).all()
-        return [approval_row(db, a) for a in [*pending, *done]]
-
-
-class Decision(BaseModel):
-    decision: Literal["approved", "declined"]
-    note: str = Field("", max_length=1000)  # staff's message to the customer
-
-
-@app.post("/api/approvals/{approval_id}")
-def decide(approval_id: int, body: Decision, who: str = dash):
-    """The customer is told the answer in their chat. An approved big-group booking is booked."""
-    note = body.note.strip()
-    with Session() as db:
-        # Conditional update, so two staff deciding at once can't both act on it.
-        done = db.execute(update(Approval).where(Approval.id == approval_id, Approval.status == "pending")
-                          .values(status=body.decision, note=note or None, decided_by=who, decided_at=now())).rowcount
-        a = _get(db, Approval, approval_id)
-        if not done:
-            raise HTTPException(409, f"Already {a.status} by {a.decided_by}.")
-        msgs = cfg()["messages"]
-        if body.decision == "approved" and a.kind == "large_booking" and a.details:
-            d, at = a.details, datetime.fromisoformat(a.details["at"])
-            b = Booking(conversation_id=a.conversation_id, customer_name=d["customer_name"], phone=d["phone"], party_size=d["party_size"],
-                        at=hours.to_utc(at), notes=d.get("notes"))
-            db.add(b)
-            db.flush()
-            text = msgs["large_booking_approved"].format(party_size=b.party_size, when=hours.label(at), booking_id=b.id, note=note)
-        else:
-            text = msgs[f"approval_{body.decision}"].format(summary=a.summary, note=note)
-        db.commit()
-        conv = db.get(Conversation, a.conversation_id)
-        sent = pipeline.send_update(db, conv, text.strip()) if conv else None
-        return {**approval_row(db, a), "delivery_note": sent}
-
-
 # --- menu ----------------------------------------------------------------------------------------
 
 def item_row(i: MenuItem) -> dict:
     photo = tools.item_photo(i.id)
     return {"id": i.id, "name": i.name, "category": i.category, "description": i.description, "price": i.price,
             "options": options.lines(i.options), "dietary": i.dietary, "allergens": i.allergens, "aliases": i.aliases,
-            "available": i.available, "stock": i.stock, "minutes": i.minutes,
+            "available": i.available, "stock": i.stock,
             # ?v= so the browser shows a replaced photo
             "photo_url": f"/media/{photo.relative_to(MEDIA_DIR).as_posix()}?v={int(photo.stat().st_mtime)}" if photo else None}
 
@@ -586,11 +494,11 @@ class ItemFields(BaseModel):
     aliases: list[Tag] | None = None  # other names customers use; helps search
     available: bool | None = None
     stock: int | None = Field(None, ge=0, le=1_000_000)  # how many are left; null = don't count
-    minutes: int | None = Field(None, ge=5, le=24 * 60)  # a service booked as an appointment; null = an item to order
 
     def apply(self, i: MenuItem):
         data = self.model_dump(exclude_none=True)
-        data |= {k: getattr(self, k) for k in ("stock", "minutes") if k in self.model_fields_set}  # null here clears it
+        if "stock" in self.model_fields_set:  # null here clears it
+            data["stock"] = self.stock
         if "options" in data:
             try:
                 data["options"] = options.parse(data["options"])
@@ -670,13 +578,11 @@ def _period(db, start, end) -> dict:
     flagged = set(db.scalars(select(Conversation.id).where(Conversation.id.in_(chat_ids), Conversation.needs_human)))
     orders = db.scalars(select(Order).where(Order.created_at >= start, Order.created_at < end)).all()
     live = [o for o in orders if o.status != "cancelled"]
-    booked = db.scalars(select(Booking).where(Booking.created_at >= start, Booking.created_at < end, Booking.status != "cancelled")).all()
     revenue = sum(o.total for o in live)
     ai_cost, ai_tokens = db.execute(select(func.sum(LlmUsage.cost_usd), func.sum(LlmUsage.input_tokens + LlmUsage.output_tokens))
                                     .where(LlmUsage.created_at >= start, LlmUsage.created_at < end)).one()
-    customers = {o.conversation_id for o in live} | {b.conversation_id for b in booked}  # chats that ordered or booked
+    customers = {o.conversation_id for o in live}  # chats that ordered
     return {"revenue": revenue, "orders": len(live), "cancelled": len(orders) - len(live),
-            "bookings": len(booked), "covers": sum(b.party_size for b in booked),
             "ai_cost_usd": round(ai_cost or 0, 4), "ai_tokens": ai_tokens or 0,
             "avg_order": round(revenue / len(live)) if live else 0, "chats": len(chat_ids),
             "conversion_pct": round(100 * len(customers & chat_ids) / len(chat_ids)) if chat_ids else 0,

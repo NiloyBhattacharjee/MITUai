@@ -1,10 +1,14 @@
 import csv
 import io
+from datetime import timedelta
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
-from app.db import Conversation, Message, Order
+from app import pipeline
+from app.db import Conversation, Message, Order, now
 from app.main import app
+from app.tools import Ctx, create_order
 
 client = TestClient(app)
 
@@ -66,26 +70,6 @@ def test_kitchen_sees_active_orders_soonest_first_and_can_pause_orders(db):
     assert client.put("/api/settings", json={"orders_paused": True}).status_code == 401
 
 
-def test_staff_see_bookings_and_cancelling_tells_the_customer(db, clock):
-    from datetime import timedelta
-    from sqlalchemy import select
-    from app import hours
-    from app.db import Booking
-    h = {"X-Session": "pw"}
-    db.add(Conversation(id="sim-b", channel="sim", phone="b"))
-    soon, later = hours.to_utc(clock + timedelta(hours=2)), hours.to_utc(clock + timedelta(days=20))
-    db.add_all([Booking(conversation_id="sim-b", customer_name="Liam", phone="0412345678", party_size=4, at=soon),
-                Booking(customer_name="Far", phone="0412345678", party_size=2, at=later)])
-    db.commit()
-    rows = client.get("/api/bookings?days=14", headers=h).json()
-    assert [b["customer_name"] for b in rows] == ["Liam"]
-    r = client.patch(f"/api/bookings/{rows[0]['id']}", json={"status": "cancelled"}, headers=h).json()
-    assert r["note"] is None
-    last = db.scalars(select(Message).where(Message.conversation_id == "sim-b")).all()[-1].text
-    assert "booking for 4" in last and "12:00" in last
-    assert client.patch(f"/api/bookings/{rows[0]['id']}", json={"status": "gone"}, headers=h).status_code == 400
-
-
 def test_simulator_needs_login_and_guessing_locks_out(db, fake_llm):
     from app import main
     main._wrong.clear()
@@ -112,3 +96,43 @@ def test_staff_can_see_which_tools_the_ai_used(db, fake_llm):
     assert steps[0]["args"] == {"query": "latte"} and steps[0]["result"]["results"][0]["id"] == "M02"
     assert asked.text == "We have lattes"
     assert client.get(f"/api/messages/{customer['id']}/steps").status_code == 401
+
+def chat(db, conv_id="sim-1"):
+    db.add(Conversation(id=conv_id, channel="sim", phone=conv_id[4:]))
+    db.commit()
+    return Ctx(db, db.get(Conversation, conv_id), 1)
+
+
+def last_text(db, conv_id="sim-1"):
+    return db.scalars(select(Message.text).where(Message.conversation_id == conv_id).order_by(Message.id)).all()[-1]
+
+
+def test_one_reminder_for_an_unanswered_order_summary(db):
+    order = {"customer_name": "Olivia", "phone": "0412345678", "fulfilment": "pickup", "pickup_time": "asap",
+             "items": [{"item_id": "M04", "quantity": 1, "options": ["Regular"]}]}
+    for conv_id in ("sim-quiet", "sim-busy"):
+        c = chat(db, conv_id)
+        db.add(Message(conversation_id=conv_id, role="user", text="a long black please"))
+        db.commit()
+        c.turn_id = db.scalar(select(Message.id).where(Message.conversation_id == conv_id))
+        create_order(c, False, **order)
+    db.add(Message(conversation_id="sim-busy", role="user", text="hmm, let me think"))  # answered the summary
+    db.commit()
+
+    pipeline.remind_unconfirmed()
+    assert last_text(db, "sim-quiet") == "a long black please"  # too soon: quoted just now
+
+    for conv_id in ("sim-quiet", "sim-busy"):
+        conv = db.get(Conversation, conv_id)
+        conv.pending_order = {**conv.pending_order, "quoted_at": (now() - timedelta(minutes=11)).isoformat()}
+    db.commit()
+    pipeline.remind_unconfirmed()
+    pipeline.remind_unconfirmed()  # never twice
+    texts = db.scalars(select(Message.text).where(Message.conversation_id == "sim-quiet")).all()
+    assert texts[-1] == "Just checking: would you like me to place your order ($4.50)? Reply yes to confirm, or tell me what to change."
+    assert len(texts) == 2 and last_text(db, "sim-busy") == "hmm, let me think"
+
+
+def test_saved_replies_for_staff(db):
+    assert client.get("/api/saved-replies").status_code == 401
+    assert client.get("/api/saved-replies", headers={"X-Session": "pw"}).json()[0].startswith("Thanks for your patience")

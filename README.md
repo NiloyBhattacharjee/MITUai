@@ -2,16 +2,14 @@
 
 Small sellers on Facebook, Instagram and WhatsApp have no website or checkout: every sale happens in DMs, and most messages are "price?", "is M available?", "delivery charge outside Dhaka?" and "COD?". Mitu answers them in chat, day and night. It answers product questions (prices, sizes and colours, what's left in stock, delivery charges), takes orders for delivery or pickup with cash on delivery or bKash (for today or a later day), counts stock down so the last one is never sold twice, understands voice notes and photos (a screenshot of a post: "how much is this one?"), and hands off to a person when it should. The demo business is **Nakshi Threads**, a clothing shop in Dhaka, set up in `business.yaml`.
 
-One install runs many businesses, each with its own products, settings, staff, chats, orders and WhatsApp/Messenger/Instagram accounts. The same code also runs a café (table bookings, allergens) and a salon (appointments with named staff): see `examples/` and [What a business does](#what-a-business-does).
+One install runs many businesses, each with its own products, settings, staff, chats, orders and WhatsApp/Messenger/Instagram accounts. The same code also runs a café (orders for today, required options, allergens): see `examples/cafe.yaml` and [What a business does](#what-a-business-does).
 
 - **Dashboard** (home page; staff sign in with their business's ID and their own password):
-  - **Overview:** revenue per day, orders, bookings, top items, pickup vs delivery, AI-handled share and AI cost, each compared with the previous period.
-  - **Kitchen** (Packing for a shop): live orders in New / Preparing / Ready columns, with a sound when one arrives and a button to pause online orders.
+  - **Overview:** revenue per day, orders, cancellations, top items, pickup vs delivery, AI-handled share and AI cost, each compared with the previous period.
+  - **Packing** (Kitchen for the café): live orders in New / Preparing / Ready columns, with a sound when one arrives and a button to pause online orders.
   - **Orders:** every order, with a CSV export.
-  - **Bookings:** the next two weeks of table bookings or appointments (not shown for a shop).
-  - **Approvals:** refunds, discounts, big-group bookings and other exceptions the assistant won't decide alone. Staff approve or decline with an optional message, and the customer is told in their chat; an approved big group is booked automatically.
   - **Conversations:** live chats with staff replies (with saved replies from `business.yaml`) and an AI on/off switch per chat. Under each customer message, "AI used …" shows the tools the AI called, what they returned and what that turn cost.
-  - **Menu** (Products for a shop, Services for a salon): prices, options, stock, dietary info, photos, and a sold-out switch.
+  - **Products** (Menu for the café): prices, options, stock, dietary info, photos, and a sold-out switch.
 - **Chat simulator** (`#/simulator`, signed-in staff only, since every message runs the paid LLM): a WhatsApp-style phone in the browser, with a hold-to-record mic and a photo button.
 - **Real chats:** WhatsApp through the Cloud API webhook; Messenger and Instagram through the Messenger Platform webhook.
 
@@ -19,7 +17,7 @@ Every channel runs the same code path: `pipeline.py` → `agent.respond()` → L
 
 ```
 business.yaml          the demo shop: hours, delivery, payments, fixed messages, products (each business on the install has its own)
-examples/              other kinds of business: a café (orders, table bookings; the tests and the eval use it) and a salon (appointments)
+examples/cafe.yaml     another kind of business: a café that takes orders for today (the tests and the eval use it)
 backend/
   app/config.py        .env, money helpers
   app/tenancy.py       which business a request or message belongs to; every query on a business's data is filtered to it
@@ -29,17 +27,16 @@ backend/
   app/hours.py         opening hours in the business's timezone
   app/options.py       menu options ("Milk: Full cream, Oat +0.80") and checking a customer's choices
   app/tools.py         the AI's tools: search_menu, get_menu, get_item, send_item_photo, saved_details, create_order,
-                       get_order_status, cancel_order, check_availability, book_table, my_bookings, cancel_booking,
-                       request_approval, get_business_info, escalate_to_human
-  app/llm.py           LLM interface: Bedrock, the Anthropic API or Ollama (LLM_PROVIDER)
+                       get_order_status, cancel_order, get_business_info, escalate_to_human
+  app/llm.py           LLM interface: the Anthropic API or Ollama (LLM_PROVIDER)
   app/agent.py         system prompt, history, tool loop, handoff
   app/pipeline.py      one entry point per message type (text / voice / photo / other), used by every channel
   app/whatsapp.py      WhatsApp webhook (verify, signature, dedupe) + Graph API client
   app/messenger.py     Messenger and Instagram webhook + Send API
-  app/voice.py         speech-to-text / text-to-speech (OpenAI, Amazon Transcribe), ffmpeg helpers
+  app/voice.py         speech-to-text (OpenAI Whisper), ffmpeg helpers
   app/main.py          FastAPI: dashboard + simulator API
   manage.py            add businesses and staff, connect their WhatsApp number and Facebook Page
-  seed.py  cli.py  eval.py  compare_models.py  backup.py  compare_stt.py  tests/  evals/
+  seed.py  cli.py  eval.py  backup.py  tests/  evals/
 frontend/              React + Vite + Tailwind (dashboard + simulator), served by Caddy in Docker
 ```
 
@@ -55,7 +52,7 @@ cd backend
 python -m venv .venv
 .venv/bin/pip install -r requirements.txt        # Windows: .venv\Scripts\pip
 .venv/bin/python seed.py                         # creates the first business (SHOP_ID) from business.yaml and .env,
-                                                 # with a few sample orders, bookings or appointments, whichever it takes
+                                                 # with a few sample orders
                                                  # (add --demo for 60 days of fake ones to fill the Overview)
 .venv/bin/python cli.py 0412345678               # optional: chat with the first business's agent in the terminal
 .venv/bin/uvicorn app.main:app --reload --port 8000
@@ -76,27 +73,20 @@ Run the tests (no credentials needed, the LLM and Graph API are mocked, and the 
 cd backend && .venv/bin/python -m pytest
 ```
 
-The tests use a fake LLM, so they can't tell you whether the real model behaves. The eval does: 51 scripted customer conversations in `backend/evals/cases.yaml`, mostly on the café in `examples/cafe.yaml`, plus the shop and the salon (menu questions, allergies, ordering, required options, closing time, cancelling, bookings, refunds and big groups going to the team, complaints, prompt injection, …) run against the real model from `.env`. Each runs on a throwaway database at 10:00 café time, checking which tools were called, what ended up in the database, and the replies. Run it after changing the prompt, the tools, the menu format or the model. It costs roughly $1–3 per full run on Sonnet (about double on Opus, free on Ollama):
+The tests use a fake LLM, so they can't tell you whether the real model behaves. The eval does: 39 scripted customer conversations in `backend/evals/cases.yaml`, mostly on the café in `examples/cafe.yaml`, plus the shop (menu questions, allergies, ordering, required options, closing time, cancelling, refunds and complaints going to the team, prompt injection, …) run against the real model from `.env`. Each runs on a throwaway database at 10:00 café time, checking which tools were called, what ended up in the database, and the replies. Run it after changing the prompt, the tools, the menu format or the model. It costs roughly $1–3 per full run on Sonnet (about double on Opus, free on Ollama):
 
 ```bash
 cd backend && .venv/bin/python eval.py              # all cases; exit code 1 if any fail
-.venv/bin/python eval.py booking cancel             # only cases whose name contains a word
-```
-
-To pick a model, run the same cases on several and compare. It prints pass rate, cost and seconds per customer turn for each model, then every case one of them failed, and saves the table in `backend/evals/results/` (commit them to keep a record of what changed):
-
-```bash
-.venv/bin/python compare_models.py anthropic:claude-sonnet-5-5 anthropic:claude-haiku-4-5 ollama:qwen3:4b
+.venv/bin/python eval.py cancel shop                # only cases whose name contains a word
 ```
 
 Models vary from run to run, so a single failure is worth reading (the transcript is printed) before you change anything. Add a case whenever a real chat goes wrong.
 
-**Docker:** `cp .env.example .env`, fill it in, then `docker compose up --build` and open http://localhost (port 80 already taken? `HTTP_PORT=8080 docker compose up --build` and open http://localhost:8080). Rebuild with `--build` after pulling new code: plain `docker compose up` runs the old images. Docker inside WSL2 with Ollama on Windows: add `COMPOSE_FILE=docker-compose.yml:docker-compose.ollama.yml` to `.env` (see that file). The first start creates the first business from `.env` and `business.yaml`. Caddy serves the app and passes `/api`, `/media` and the webhooks to the backend, which has no public port. Seed data loads on first start, and the database and media live in the `data` volume. A `backup` container writes a `.tar.gz` of the database and media to `./backups` at start and then daily, keeping 14.
+**Docker:** `cp .env.example .env`, fill it in, then `docker compose up --build` and open http://localhost (port 80 already taken? `HTTP_PORT=8080 docker compose up --build` and open http://localhost:8080). Rebuild with `--build` after pulling new code: plain `docker compose up` runs the old images. The first start creates the first business from `.env` and `business.yaml`. Caddy serves the app and passes `/api`, `/media` and the webhooks to the backend, which has no public port. Seed data loads on first start, and the database and media live in the `data` volume. A `backup` container writes a `.tar.gz` of the database and media to `./backups` at start and then daily, keeping 14.
 
 ### LLM settings
 
 - `LLM_PROVIDER=ollama` (default) runs a local model through [Ollama](https://ollama.com), with no cloud account: `ollama pull qwen3:4b`, or set `OLLAMA_MODEL` to another one. It needs a model with tool support (and a vision model, like `qwen2.5vl`, for customer photos). Good for trying the flow for free; expect more mistakes and slow replies on a CPU.
-- `LLM_PROVIDER=bedrock` uses boto3 `bedrock-runtime` `converse` with tool use, with the model from `BEDROCK_MODEL_ID` and the standard AWS credentials. Enable Claude model access in the Bedrock console first. If your region needs an inference profile, use the prefixed ID (e.g. `us.anthropic.claude-opus-5-5`).
 - `LLM_PROVIDER=anthropic` uses the Anthropic API with `ANTHROPIC_API_KEY`. It runs at `LLM_EFFORT=low` for snappy chat replies, prompt caching is on, and server-side refusal fallbacks are on (`fallbacks: "default"`), so a false-positive safety decline is retried on another model instead of failing.
 
 ## 2. Connect real WhatsApp (Meta test number + ngrok)
@@ -126,11 +116,10 @@ For anything beyond a demo, create a **System User** in Business Settings and ge
 Each business is described by a file like `business.yaml` (the first business uses `BUSINESS_FILE`, default `business.yaml`):
 
 - **The basics:** name, the assistant's name, `timezone`, `currency`, location (add parking and transport, since people ask), about.
-- **`hours`:** per day, e.g. `"07:00-15:00"` or `"07:00-11:00, 17:00-21:00"`; leave a day out to close it. Orders and bookings are only accepted inside these. `prep_minutes` is the earliest an order can be ready, and `quote_reminder_minutes` is when a customer who hasn't answered an order summary gets one nudge.
+- **`hours`:** per day, e.g. `"07:00-15:00"` or `"07:00-11:00, 17:00-21:00"`; leave a day out to close it. Orders are only accepted inside these. `prep_minutes` is the earliest an order can be ready, and `quote_reminder_minutes` is when a customer who hasn't answered an order summary gets one nudge.
 - **`fulfilment`:** pickup and delivery, with fees and notes. `needs_address: true` makes the assistant ask for an address.
 - **`payment_methods`:** with only one, the assistant never asks.
-- **`reservations`:** seats (`capacity`), how long a sitting lasts, the biggest party it books itself (bigger ones go to a person), the last booking before closing, and how far ahead people can book.
-- **`allergen_note`, the fixed replies, and the messages customers get** when staff move an order on, cancel a booking or answer an approval request.
+- **`allergen_note`, the fixed replies, and the messages customers get** when staff move an order on.
 - **`saved_replies`:** quick replies staff can insert in the chat box.
 - **`menu`:** each item has an `id`, `name`, `category`, `price`, `description`, `options`, `dietary`, `allergens`, `aliases` (other names customers use) and optionally `available: false`. Options are one line per group: `"Size*: Regular, Large +0.80"` (`*` = must pick one), `"Milk: Full cream, Oat +0.80"` (at most one), `"Extras (any): Extra shot +0.60"` (any number). The dashboard's Menu page uses the same format.
 
@@ -138,7 +127,7 @@ For the first business, run `python seed.py`. After that, manage the menu on the
 
 ## 4. Run several businesses on one install
 
-Every business gets its own menu, settings, staff, chats, orders, bookings, approvals and AI-cost figures. Staff sign in with their business's ID and their own password and only ever see their business. The LLM and speech keys in `.env` are shared, and the Overview page shows what each business's AI costs, which is what you'd bill on.
+Every business gets its own menu, settings, staff, chats, orders and AI-cost figures. Staff sign in with their business's ID and their own password and only ever see their business. The LLM and speech keys in `.env` are shared, and the Overview page shows what each business's AI costs, which is what you'd bill on.
 
 ```bash
 cd backend
@@ -158,14 +147,13 @@ What a business does follows from the sections in its settings file, and the ass
 
 | Section | Turns on |
 |---|---|
-| `fulfilment` + `payment_methods` | orders (pickup, delivery zones, any payment methods, e.g. cash on delivery and bKash) and the Kitchen (or Packing) and Orders pages |
-| `reservations` | table bookings |
-| `appointments` | services by appointment with named staff (`providers`), for items that have `minutes` |
+| `fulfilment` + `payment_methods` | orders (pickup, delivery zones, any payment methods, e.g. cash on delivery and bKash) and the Packing (or Kitchen) and Orders pages |
+| `allergen_note` | the allergy rules in the prompt |
 
-On items, `stock: 12` makes the assistant count them down (it never sells more than are left, and a cancelled order puts them back), and `orders_days_ahead: 7` lets customers order for a later day. `kind: a hair and beauty salon` is how the assistant describes the business. `labels` renames dashboard pages (`menu: Catalogue`), and `try_messages` are the examples the chat simulator offers. `business.yaml` is a working shop; `examples/cafe.yaml` and `examples/salon.yaml` are the others.
+On items, `stock: 12` makes the assistant count them down (it never sells more than are left, and a cancelled order puts them back), and `orders_days_ahead: 7` lets customers order for a later day. `kind: an online clothing shop` is how the assistant describes the business. `labels` renames dashboard pages (the café sets `kitchen: Kitchen` and `menu: Menu`; a shop's are Packing and Products), and `try_messages` are the examples the chat simulator offers. `business.yaml` is a working shop; `examples/cafe.yaml` is a café.
 
 ```bash
-.venv/bin/python manage.py add-shop bloom ../examples/salon.yaml --owner-password 'a-long-password'
+.venv/bin/python manage.py add-shop little-fern ../examples/cafe.yaml --owner-password 'a-long-password'
 ```
 
 ### A public demo for the website
@@ -207,12 +195,9 @@ Backups land in `~/mituai/backups` on the server. **Copy them off the server** (
 
 The flow: WhatsApp `audio` message → `GET /{media_id}` → download with the token → save the original (for the dashboard player) → ffmpeg to 16 kHz mono WAV → reject anything over 2 minutes → speech-to-text → if the transcript is empty or confidence is below `STT_MIN_CONFIDENCE`, reply "please repeat or type it" (never guess) → otherwise the same `agent.respond()` as typed text. The transcript is stored marked as a voice note, and each step's time is logged.
 
-- `STT_PROVIDER=openai`: OpenAI `whisper-1`, with a prompt listing the menu's item names so it spells them right. Confidence comes from segment log-probabilities.
-- `STT_PROVIDER=aws`: Amazon Transcribe batch in `TRANSCRIBE_LANGUAGE` (default `en-US`). It uploads to `TRANSCRIBE_S3_BUCKET`, runs a job, polls, then deletes the object and the job.
-- To compare both on the same recordings, run `python compare_stt.py backend/media/*.ogg`. It prints text, detected language, confidence and latency per provider.
-- `VOICE_REPLY=true` also sends a spoken reply (OpenAI TTS → ffmpeg to OGG/Opus → `POST /{phone_number_id}/media` → audio message). The text version is always sent too.
+Speech-to-text is OpenAI `whisper-1` (`OPENAI_API_KEY`), prompted with the menu's item names so it spells them right. Confidence comes from segment log-probabilities. Replies are always text.
 
-**Languages.** The assistant replies in the language the customer writes or speaks in; there's nothing to switch on. For voice notes in several languages, use `STT_PROVIDER=openai` (it detects the language itself); Amazon Transcribe only listens for the one `TRANSCRIBE_LANGUAGE`. Whisper is reliable in about 57 languages (Hindi, Urdu, Nepali, Tamil, Vietnamese, Indonesian, Tagalog, Thai, Mandarin, Arabic, …) and weak on Bengali, Punjabi, Gujarati, Telugu, Sinhala, Burmese and Khmer. The fixed messages in the business file (handoff, "couldn't catch that voice note", order updates, approvals) are sent as written, so they're in whatever language you wrote them in.
+**Languages.** The assistant replies in the language the customer writes or speaks in; there's nothing to switch on. Whisper detects the language of a voice note itself, and is reliable in about 57 languages (Hindi, Urdu, Nepali, Tamil, Vietnamese, Indonesian, Tagalog, Thai, Mandarin, Arabic, …) and weak on Bengali, Punjabi, Gujarati, Telugu, Sinhala, Burmese and Khmer. The fixed messages in the business file (handoff, "couldn't catch that voice note", order updates) are sent as written, so they're in whatever language you wrote them in.
 
 ## Decisions
 
@@ -221,17 +206,15 @@ Simplest options picked where the brief was open:
 - **Order confirmation is enforced in code, not just the prompt.** `create_order(confirmed=false)` checks everything and quotes, and stores the quote on the chat. `confirmed=true` only works if that quote was made in an *earlier* turn, so the customer must have sent a message after seeing the summary. Whether that message means "yes" is the LLM's call. Confirming checks everything again (sold out since? kitchen closed? orders paused?), and if the price changed it shows the new total and asks again.
 - **The demo is a shop that sells in DMs, not a café.** Cafés mostly take orders through delivery apps, so chat is a side channel for them; for Facebook and Instagram sellers the chat is the whole shop. The café stays as `examples/cafe.yaml`, and the tests and eval still run on it.
 - **Orders are for today only** by default, for "as soon as possible" (now plus `prep_minutes`) or a time today inside opening hours. A shop that ships sets `orders_days_ahead`; the time must still be inside its hours that day. There's no capacity per day: add one when a business gets more orders than it can make.
-- **Bookings are one step** (the prompt makes the assistant repeat the details and wait for a yes): a wrong booking is cheap to cancel, unlike a wrong food order. Capacity is a seat count: every booking within one sitting of the new one counts against it. That over-counts slightly; a table plan would be exact.
-- **Approvals vs handoff:** a request with a clear yes/no (refund, discount, big group) goes to the Approvals queue and the assistant keeps chatting; an upset customer, a serious allergy question or catering goes to a person and the assistant steps back. Two staff can't both answer one request: the decision is a conditional update.
+- **Orders only, for now.** Table bookings, salon appointments and an approvals queue were built and then taken out to keep the demo small; they're in git history (the commit that removed them says so) for when a business needs them. A refund, discount or other exception goes to a person through the handoff, so the assistant never promises or refuses one itself.
 - **One reminder** per unanswered order summary, checked every minute by the backend and sent only inside the messaging window. It's marked before sending, so a failed send never becomes a second nudge.
 - **Sold out is a switch; stock counts are optional.** Cafés run out of things during the day and nobody counts croissants into a system, so items without `stock` just have the switch. A shop sets `stock`: placing an order counts it down with a conditional update (two customers can't both buy the last one), and cancelling, by the customer or on the dashboard, puts it back.
-- **Appointments are bookings with a service and a person.** A service is a menu item with `minutes`, so search, photos, prices and the dashboard's Menu page all work for it. The assistant offers the start times when someone who does that service is free for its whole length inside opening hours, and books the first free person unless the customer asked for one. Everyone works the business's hours; per-person hours and days off aren't built yet.
 - **Allergens:** the assistant only repeats the tags on each item plus the business's allergen note, never says a dish is safe, and hands serious allergy questions to a person.
 - **Time:** each customer message in the history starts with its local send time (`[Sat 12 Oct 2026 13:05]`), so "tomorrow" and "in 20 minutes" work. It's part of the stored message, so the cached prompt prefix doesn't change from turn to turn.
 - **Money** is stored in cents and shown with `currency` from `business.yaml`.
 - **History is text only**, except the customer's own photos (JPG/PNG), which are re-sent as images every turn (prompt caching makes the repeats cheap). Each turn's tool calls stay inside that turn, and the model re-looks things up next turn. The last 30 messages are sent.
 - **Every business's data is filtered in one place.** Business tables share a `Scoped` base. A SQLAlchemy hook adds `shop_id = <business in scope>` to every SELECT, UPDATE and DELETE on them, new rows get it automatically, and a query with no business in scope raises instead of returning everything. One forgotten filter can't leak another business's orders. Dashboard requests get their business from the login session, webhooks from the number or Page they were sent to, and background jobs loop over businesses.
-- **Customers can only see and change their own orders and bookings,** the ones made in the same chat. Nothing is looked up by a phone number someone types.
+- **Customers can only see and change their own orders,** the ones placed in the same chat. Nothing is looked up by a phone number someone types.
 - **Handoff** sets `needs_human` and switches the AI off for that chat. Turning it back on in the dashboard clears the flag. If the LLM call fails, the customer gets a polite fixed message and the chat is flagged.
 - **Fixed replies** (unsupported media, unclear or too-long voice note, errors) skip the LLM and come from `business.yaml`.
 - **`% handled by AI`** counts the period's chats that were never flagged and got no staff reply.
@@ -269,9 +252,8 @@ flowchart LR
         DB[("SQLite<br/>shop.db")]
         MEDIA[("media/<br/>voice notes, photos")]
     end
-    LLM["LLM<br/>Ollama, Anthropic API or Bedrock"]
-    SPEECH["Speech<br/>OpenAI Whisper and TTS, or Amazon Transcribe"]
-    MAIL["SMTP<br/>alerts to the owner"]
+    LLM["LLM<br/>Ollama or Anthropic API"]
+    SPEECH["Speech-to-text<br/>OpenAI Whisper"]
 
     C -- "DMs, voice notes, photos" --> WA & MP
     WA & MP -- "signed webhooks" --> API
@@ -280,10 +262,9 @@ flowchart LR
     API --> DB & MEDIA
     API -- "prompt + tools" --> LLM
     API -- "audio" --> SPEECH
-    API -- "handoffs, approvals" --> MAIL
 ```
 
-Customers never see Mitu's own address: they write to the business's WhatsApp number, Facebook Page or Instagram account, and Meta forwards each message to Mitu's webhooks. Staff use the dashboard. Everything else (the LLM, speech and email) is called by the backend on the way through.
+Customers never see Mitu's own address: they write to the business's WhatsApp number, Facebook Page or Instagram account, and Meta forwards each message to Mitu's webhooks. Staff use the dashboard. Everything else (the LLM and speech-to-text) is called by the backend on the way through.
 
 ### How it's deployed
 
@@ -319,9 +300,8 @@ Everything runs in **one uvicorn process**. Inside it:
 | Handling a message (LLM, tools, reply) | FastAPI `BackgroundTasks` | An LLM turn takes seconds; Meta retries if the webhook is slow |
 | Re-running messages a restart cut off | `pipeline.resume_unfinished`, a thread started once at startup | So a crash mid-reply doesn't lose a customer's message |
 | The every-minute job (unanswered-quote reminders) | `main.every_minute`, a daemon thread | Loops over every business, each in its own scope |
-| Owner alert emails | one short thread per email in [`notify.py`](backend/app/notify.py) | The customer never waits on SMTP |
 
-Two locks keep concurrent work safe: `agent._locks` runs one agent turn at a time per chat (customers send bursts of messages), and `tools._booking_lock` makes checking a free appointment time and booking it one step. Both assume one process; the `ponytail:` comments next to them say what to change for several workers.
+One lock keeps concurrent work safe: `agent._locks` runs one agent turn at a time per chat (customers send bursts of messages). It assumes one process; the `ponytail:` comment next to it says what to change for several workers. Stock is safe without it: it's counted down with a conditional update.
 
 ### Which business a request belongs to
 
@@ -352,7 +332,7 @@ flowchart LR
     META["Meta webhooks"] -- "HMAC-SHA256 of the body<br/>X-Hub-Signature-256 with WHATSAPP_APP_SECRET" --> B
     BROWSER["Browser"] -- "session token<br/>(only its SHA-256 is stored)" --> B
     B["Backend"] --> T["Tenancy filter<br/>one business per query"]
-    T --> OWN["Customer tools<br/>only this chat's orders and bookings"]
+    T --> OWN["Customer tools<br/>only this chat's orders"]
     T --> RULES["create_order<br/>confirmation enforced in code"]
     B --> MED["/media<br/>public, random 128-bit file names"]
 ```
@@ -362,7 +342,7 @@ flowchart LR
 | Meta → backend | Signature check on every POST; `GET /webhook` only echoes the challenge for the right verify token | [`whatsapp.py`](backend/app/whatsapp.py) `valid_signature`, `verify` |
 | Browser → backend | scrypt passwords, 30-day session tokens stored hashed, 10 wrong passwords per IP lock it for 15 minutes | [`auth.py`](backend/app/auth.py), `main.login` |
 | One business → another | `Scoped` tables filtered by the business in scope | [`db.py`](backend/app/db.py), [`tenancy.py`](backend/app/tenancy.py) |
-| Customer → other customers | Tools look up orders and bookings by this chat only, never by a typed phone number | `tools._own`, `tools.saved_details` |
+| Customer → other customers | Tools look up orders by this chat only, never by a typed phone number | `tools._own`, `tools.saved_details` |
 | LLM → the shop's data | Tools validate everything; the order needs a quote in an earlier turn | `tools.create_order` |
 | Internet → backend | Only Caddy is reachable; the backend has no public port | [`docker-compose.yml`](docker-compose.yml) |
 
@@ -416,7 +396,6 @@ They take the same path as WhatsApp from `pipeline` onwards; only the edges diff
 | Conversation id | `<business>:<phone>` | `<business>:messenger-<id>` or `<business>:instagram-<id>` |
 | Skipped | status updates | read receipts, deliveries and echoes of our own replies |
 | Sending a photo | upload, then send with a caption | Meta fetches it from `PUBLIC_URL`; photo first, then the text |
-| Voice replies | yes, with `VOICE_REPLY=true` | text only |
 
 ### Duplicate webhooks and crash recovery
 
@@ -489,14 +468,11 @@ Nothing about a business is hard-coded: the prompt and the tool list are assembl
 flowchart LR
     Y["business settings<br/>(business.yaml, stored on the shop)"] --> F{"which sections?"}
     F -- "fulfilment + payment_methods" --> O["prompt: Ordering steps<br/>tools: create_order, get_order_status, cancel_order"]
-    F -- "reservations" --> B["prompt: Bookings<br/>tools: check_availability, book_table"]
-    F -- "appointments" --> P["prompt: Appointments<br/>tools: appointment_times, book_appointment"]
-    F -- "reservations or appointments" --> MB["tools: my_bookings, cancel_booking"]
     F -- "allergen_note" --> AL["prompt: Allergies and diets"]
-    ALL["always"] --> X["prompt: style, honesty, facts, time, photos, requests, handoff<br/>tools: search_menu, get_menu, get_item, send_item_photo,<br/>saved_details, request_approval, get_business_info, escalate_to_human"]
+    ALL["always"] --> X["prompt: style, honesty, facts, time, photos, handoff<br/>tools: search_menu, get_menu, get_item, send_item_photo,<br/>saved_details, get_business_info, escalate_to_human"]
 ```
 
-`tools.enabled()` decides which tools exist, `tools.specs()` builds their JSON schemas (the `fulfilment` and `payment_method` enums come from the business's own choices), and `agent.system_prompt()` adds only the sections that apply. A salon's assistant is never told about delivery, and couldn't call `create_order` if it tried: `run_tool` rejects tools that aren't enabled.
+`tools.enabled()` decides which tools exist, `tools.specs()` builds their JSON schemas (the `fulfilment` and `payment_method` enums come from the business's own choices), and `agent.system_prompt()` adds only the sections that apply. A business without `fulfilment` is never told about ordering, and couldn't call `create_order` if it tried: `run_tool` rejects tools that aren't enabled.
 
 ### What the LLM sees as history
 
@@ -600,7 +576,7 @@ Meta only allows free-form messages to a customer within 24 hours of their last 
 
 ```mermaid
 flowchart TD
-    S["Mitu wants to message a customer first<br/>(status update, approval answer, reminder, staff reply)"] --> W{"pipeline.window_open:<br/>simulator, or customer wrote in the last 24 h?"}
+    S["Mitu wants to message a customer first<br/>(status update, reminder, staff reply)"] --> W{"pipeline.window_open:<br/>simulator, or customer wrote in the last 24 h?"}
     W -- "yes" --> D["deliver, then store it in the chat"]
     W -- "no" --> N["don't send: return a note for staff,<br/>or 409 on a staff reply"]
     D -- "send failed" --> F["note: sending failed"]
@@ -639,18 +615,15 @@ flowchart TD
     SAVE --> WAV["ffmpeg: 16 kHz mono WAV"]
     WAV --> LEN{"over 2 minutes?"}
     LEN -- "yes" --> TL["fixed reply: voice_too_long"]
-    LEN -- "no" --> STT["speech-to-text<br/>OpenAI Whisper with the menu's names as a hint,<br/>or Amazon Transcribe"]
+    LEN -- "no" --> STT["speech-to-text<br/>OpenAI Whisper with the menu's names as a hint"]
     STT -- "error" --> ER["fixed reply: error, chat flagged"]
     STT --> CF{"empty, or confidence below STT_MIN_CONFIDENCE?"}
     CF -- "yes" --> UN["fixed reply: voice_unclear<br/>(never guess an order)"]
     CF -- "no" --> AG["agent.respond(transcript, is_voice=True)"]
-    AG --> TTS{"VOICE_REPLY=true?"}
-    TTS -- "yes" --> OGG["TTS, ffmpeg to OGG/Opus, sent as audio too"]
-    TTS -- "no" --> TX["text reply"]
-    OGG --> TX
+    AG --> TX["text reply"]
 ```
 
-The fixed replies skip the LLM and come from `messages` in the business file. Each step's time is logged per voice note. See [Voice notes](#voice-notes) for the providers.
+The fixed replies skip the LLM and come from `messages` in the business file. Each step's time is logged per voice note. See [Voice notes](#voice-notes) for the settings.
 
 ### Photos, in and out
 
@@ -675,10 +648,10 @@ sequenceDiagram
     participant A as Assistant
     participant N as notify
     participant S as Staff (dashboard)
-    C->>A: This is the second time my order was wrong!
+    C->>A: My kurti came torn, I want a refund!
     A->>N: escalate_to_human(reason)
     N->>N: needs_human=True, bot off for this chat
-    N-->>S: email (only the first time it's flagged)
+    N-->>S: flagged in Conversations
     A->>C: A team member will reply here soon.
     C->>A: (more messages: stored, no AI reply)
     S->>C: staff reply from Conversations (inside 24 h)
@@ -686,63 +659,6 @@ sequenceDiagram
 ```
 
 Other ways a chat gets flagged: the LLM call fails (the customer gets `messages.error`), or a voice note can't be processed. Those flag the chat but leave the AI on. A flagged chat shows in Conversations with its reason, and doesn't count as AI-handled on the Overview.
-
-### Approvals
-
-For requests with a clear yes or no, the assistant asks the team and keeps chatting, instead of stepping back:
-
-```mermaid
-sequenceDiagram
-    participant C as Customer
-    participant A as Assistant
-    participant DB as Database
-    participant S as Staff
-    C->>A: The kurti came torn, can I get a refund?
-    A->>DB: request_approval(kind=refund, summary, order_id)
-    Note over A,DB: one pending request per kind per chat, the order must be from this chat
-    A-->>S: email: approval needed
-    A->>C: The team will check and reply here.
-    S->>DB: approve or decline, optional note
-    Note over S,DB: conditional update WHERE status=pending, so two staff can't both decide
-    alt large_booking approved
-        DB->>DB: insert the Booking from the stored details
-    end
-    DB->>C: approval_approved / approval_declined / large_booking_approved
-```
-
-Kinds are `refund`, `discount`, `large_booking` (only for businesses with table bookings) and `special_request`. A second staff member deciding the same request gets a 409 naming who already did.
-
-### Table bookings
-
-```mermaid
-flowchart TD
-    Q["check_availability(date, time, party)"] --> V{"valid?<br/>format, not past, within days_ahead,<br/>inside hours minus last_booking_before_close"}
-    V -- "no" --> E["problems listed"]
-    V -- "party over max_party" --> BIG["instruction: request_approval kind large_booking"]
-    V -- "yes" --> CAP{"seats booked within one sitting of that time<br/>+ this party <= capacity?"}
-    CAP -- "yes" --> OK["available"]
-    CAP -- "no" --> ALT["full: the 3 nearest free 15-minute slots"]
-    OK --> R["assistant repeats the details, customer agrees"]
-    R --> B["book_table: the same checks again, then insert"]
-```
-
-Booking is one step (no stored quote like orders): a wrong booking is cheap to cancel. Booking the same time twice from one chat returns the existing booking instead of a second one. Capacity counts seats, not tables, which over-counts slightly (see Decisions).
-
-### Appointments
-
-A service is a menu item with `minutes`. `appointments.providers` in the business file says who does what (`all` or a list of service ids).
-
-```mermaid
-flowchart TD
-    T["appointment_times(service, date, provider?)"] --> SL["every slot_minutes inside opening hours"]
-    SL --> FR{"for each start time: not past, service fits before closing,<br/>and which providers have no overlapping appointment?"}
-    FR --> OUT["free times, each with who is free"]
-    OUT --> C["customer picks one and agrees to the details"]
-    C --> B["book_appointment"]
-    B --> LK["_booking_lock: check free again and insert,<br/>first free provider unless one was asked for"]
-```
-
-Everyone works the business's opening hours; per-person hours and days off are issue #3. Moving an appointment is "book the new one, then cancel the old one" (one step is issue #4).
 
 ### Signing in
 
@@ -773,9 +689,8 @@ The dashboard polls instead of using websockets. `useLive(path, ms)` in [`App.js
 |---|---|---|
 | Conversations | chat list, open chat's messages | 2 s |
 | Kitchen / Packing | active orders (plays a sound on a new one) | 3 s |
-| Orders, Approvals | all orders, approvals | 5 s |
-| Sidebar badges | conversations, approvals | 5 s |
-| Bookings | the next 14 days | 10 s |
+| Orders | all orders | 5 s |
+| Sidebar badge | conversations | 5 s |
 | Menu, Overview, orders-paused switch | menu, analytics, settings | 15 s |
 | Simulator | the simulated chat | 1 s |
 
@@ -805,9 +720,8 @@ Simulator chats have ids `<business>:sim-<phone>` and show up in Conversations l
 |---|---|
 | Revenue, orders, average order | orders created in the period that aren't cancelled (totals in cents) |
 | Cancelled | orders created in the period that are |
-| Bookings, covers | bookings created in the period, not cancelled; covers = party sizes |
 | Chats | conversations with a customer message in the period |
-| Conversion | chats that placed an order or a booking, out of all chats |
+| Conversion | chats that placed an order, out of all chats |
 | AI handled | chats never flagged and with no staff reply, out of all chats |
 | AI cost, tokens | `llm_usage` rows in the period (one per API call) |
 | Revenue per day, top items, pickup vs delivery, statuses | from the same orders |
@@ -826,8 +740,6 @@ erDiagram
     MESSAGE ||--o{ TOOL_CALL : "answered with"
     CONVERSATION ||--o{ LLM_USAGE : costs
     CONVERSATION ||--o{ ORDER : "placed in"
-    CONVERSATION ||--o{ BOOKING : "made in"
-    CONVERSATION ||--o{ APPROVAL : "asked in"
     SHOP ||--o{ SETTING : has
     SHOP {
         string id PK "slug staff type to sign in"
@@ -842,7 +754,6 @@ erDiagram
         json options
         bool available "sold-out switch"
         int stock "null = not counted"
-        int minutes "set = a service"
     }
     CONVERSATION {
         string id PK "business:phone"
@@ -864,19 +775,6 @@ erDiagram
         string status
         datetime ready_at "UTC"
     }
-    BOOKING {
-        int id PK
-        int party_size
-        datetime at "UTC"
-        string service "set for appointments"
-        string provider
-    }
-    APPROVAL {
-        int id PK
-        string kind
-        string status "pending approved declined"
-        json details "large_booking: the booking"
-    }
 ```
 
 Every table except `shops`, `staff`, `login_sessions` and `seen_wa_messages` is `Scoped` (it has a `shop_id` and is filtered by tenancy). Times are stored as naive UTC and shown in the business's timezone; money is integer cents. An order keeps each line's name and price, so editing or deleting a menu item never changes past orders. New columns are added on startup by `db.init_db` (add-only; renames and drops need a real migration tool).
@@ -890,12 +788,12 @@ flowchart LR
     SH --> MI["menu_items (the menu)"]
     C --> T["tools.enabled() and specs()"]
     C --> P["agent.system_prompt()"]
-    C --> PG["GET /api/business: which pages show,<br/>and their labels (Menu, Products, Services)"]
+    C --> PG["GET /api/business: which pages show,<br/>and their labels (Products, Packing)"]
     C --> MSG["fixed replies and customer updates (messages)"]
     C --> H["hours.py: opening hours, timezone"]
 ```
 
-After the first import, the menu is managed on the dashboard; re-running `seed.py` or `manage.py update-shop` only adds items that aren't there yet and replaces the settings. That's why the settings live as JSON on the shop row: one install can hold a shop, a café and a salon side by side.
+After the first import, the menu is managed on the dashboard; re-running `seed.py` or `manage.py update-shop` only adds items that aren't there yet and replaces the settings. That's why the settings live as JSON on the shop row: one install can hold a shop and a café side by side.
 
 ### The components
 
@@ -922,7 +820,7 @@ The breakdowns below go from the middle out: the message path first, then the da
 [`backend/app/pipeline.py`](backend/app/pipeline.py)
 
 - **Owns:** turning an incoming event into an agent turn and a sent reply. `handle_whatsapp_message` and `handle_meta_event` take a raw webhook payload, set the business scope, and call `handle_text`, `handle_voice` or `handle_photo`.
-- **Sends:** `deliver(channel, phone, text, ogg, image)` is the only function that talks to a channel's Send API; `send_update` wraps it for messages Mitu starts, with the 24-hour check.
+- **Sends:** `deliver(channel, phone, text, image)` is the only function that talks to a channel's Send API; `send_update` wraps it for messages Mitu starts, with the 24-hour check.
 - **Fixed replies:** `canned_reply` stores the customer's message and answers from `messages` in the business file without the LLM (unsupported file types, unclear or long voice notes, errors).
 - **Background work:** `remind_unconfirmed` (every minute) and `resume_unfinished` (at startup).
 - **Change it when:** a new message type or a new channel arrives. Behaviour that every channel should share goes in here or in `agent.respond`, not in a channel module.
@@ -941,17 +839,17 @@ The breakdowns below go from the middle out: the message path first, then the da
 [`backend/app/tools.py`](backend/app/tools.py)
 
 - **Owns:** every action the LLM can take, as plain functions `fn(ctx, **args) -> dict`, plus the JSON schemas it sees (`specs`). `ctx` carries the database session, the conversation and the id of the message being answered.
-- **Groups:** menu (`search_menu`, `get_menu`, `get_item`, `send_item_photo`), orders (`saved_details`, `create_order`, `get_order_status`, `cancel_order`), bookings and appointments, and the business (`get_business_info`, `request_approval`, `escalate_to_human`).
-- **Rules it enforces:** prices and totals in cents from the database, stock and sold-out, required options, opening hours and lead time, delivery address, payment method, the two-step order, one chat's own orders and bookings only.
+- **Groups:** menu (`search_menu`, `get_menu`, `get_item`, `send_item_photo`), orders (`saved_details`, `create_order`, `get_order_status`, `cancel_order`), and the business (`get_business_info`, `escalate_to_human`).
+- **Rules it enforces:** prices and totals in cents from the database, stock and sold-out, required options, opening hours and lead time, delivery address, payment method, the two-step order, one chat's own orders only.
 - **Results talk to the model:** errors come back as `{"error", "problems"}` and successes carry a `status` like `PLACED` or `QUOTE_ONLY_NOT_PLACED` and often an `instruction`, which is how the code steers what the model says next.
 - **Change it when:** the assistant needs a new ability. Add the function, its entry in `FUNCTIONS` and its schema, decide in `enabled()` which businesses get it, write a test, then run the eval.
 
-#### `llm.py`: one interface over three providers
+#### `llm.py`: one interface over two providers
 
 [`backend/app/llm.py`](backend/app/llm.py)
 
 - **Interface:** `run(system, history, tools, call_tool, usage) -> reply text`. That's all the rest of the app knows about LLMs.
-- **Providers:** `OllamaLLM` (local, the default, free), `AnthropicLLM` (prompt caching, low effort for short replies, server-side refusal fallback) and `BedrockLLM` (`converse` with tool use). `LLM_PROVIDER` picks one; `get_llm()` builds it once.
+- **Providers:** `OllamaLLM` (local, the default, free) and `AnthropicLLM` (prompt caching, low effort for short replies, server-side refusal fallback). `LLM_PROVIDER` picks one; `get_llm()` builds it once.
 - **Usage:** each API call appends tokens (including cache reads and writes) to `usage`; `cost_usd` prices it from `PRICES`, so the Overview shows the real cost per business. Ollama costs 0; an unknown model costs `None` rather than a guess.
 - **Images:** customer photos go to each provider in its own format.
 - **Change it when:** adding a provider or a model's price. Tests swap the whole thing for `FakeLLM` (see Testing).
@@ -970,8 +868,8 @@ The breakdowns below go from the middle out: the message path first, then the da
 [`backend/app/db.py`](backend/app/db.py)
 
 - **Platform tables (not scoped):** `Shop` (settings and channel ids/tokens), `Staff`, `LoginSession`, `SeenWhatsAppMessage` (the webhook inbox).
-- **Business tables (scoped):** `MenuItem`, `Conversation`, `Message`, `Order`, `Booking`, `Approval`, `Setting`, `ToolCall`, `LlmUsage`. See the [data model](#data-model).
-- **Conventions:** money in integer cents, times in naive UTC (`db.now()`), status lists in `ORDER_STATUSES`, `BOOKING_STATUSES`, `APPROVAL_KINDS`. SQLite by default (`DATABASE_URL`), with a 30-second lock timeout for concurrent writers.
+- **Business tables (scoped):** `MenuItem`, `Conversation`, `Message`, `Order`, `Setting`, `ToolCall`, `LlmUsage`. See the [data model](#data-model).
+- **Conventions:** money in integer cents, times in naive UTC (`db.now()`), order statuses in `ORDER_STATUSES`. SQLite by default (`DATABASE_URL`), with a 30-second lock timeout for concurrent writers.
 - **Migrations:** `init_db()` creates tables and adds missing columns; it refuses a database from the old single-business version instead of guessing.
 - **Change it when:** a new field or table. Nullable new columns arrive on their own; anything else needs a migration plan.
 
@@ -980,7 +878,7 @@ The breakdowns below go from the middle out: the message path first, then the da
 [`backend/app/whatsapp.py`](backend/app/whatsapp.py)
 
 - **Webhook:** `GET /webhook` answers Meta's verification; `POST /webhook` checks the signature, finds the business by `phone_number_id`, records each message once and queues it.
-- **Graph API client:** `send_text`, `send_image`, `send_audio`, `upload_media`, `download_media`, `mark_read`, each with the token and number of the business in scope.
+- **Graph API client:** `send_text`, `send_image`, `upload_media`, `download_media`, `mark_read`, each with the token and number of the business in scope.
 - **Shared helpers** used by Messenger too: `valid_signature`, `shop_for`, `first_time_seen`, and the `http` client that tests replace with a mock transport.
 - **Change it when:** Meta changes its API (`GRAPH_API_VERSION`) or a new WhatsApp message type is supported (then also `pipeline.handle_whatsapp_message`).
 
@@ -993,14 +891,13 @@ The breakdowns below go from the middle out: the message path first, then the da
 - **Skips:** reads, deliveries and echoes of our own messages, so the assistant never answers itself.
 - **Change it when:** comment replies arrive (issue #16) or staff replies from the Meta inbox should pause the AI (issue #27).
 
-#### `voice.py`: speech in and out
+#### `voice.py`: speech-to-text
 
 [`backend/app/voice.py`](backend/app/voice.py)
 
-- **Interfaces:** `SpeechToText.transcribe(wav) -> Transcript(text, language, confidence)` and `TextToSpeech.synthesize(text) -> (audio, ext)`.
-- **Providers:** `OpenAISTT` (Whisper, prompted with the menu's item names via `stt_hint`, confidence from segment log-probabilities), `AWSTranscribeSTT` (batch job through S3, cleaned up afterwards) and `OpenAITTS`. `STT_PROVIDER` picks the speech-to-text one.
-- **ffmpeg helpers:** `to_wav` (16 kHz mono for STT), `to_ogg_opus` (what WhatsApp plays as a voice message) and `wav_seconds`. Temp files rather than pipes, because browser recordings need seekable input.
-- **Change it when:** adding a speech provider. `compare_stt.py` runs both on the same recordings to compare text, confidence and speed.
+- **Speech-to-text:** `OpenAISTT.transcribe(wav) -> Transcript(text, language, confidence)`: Whisper, prompted with the menu's item names via `stt_hint`, confidence from segment log-probabilities. `get_stt()` builds it, and tests swap it for a fake.
+- **ffmpeg helpers:** `to_wav` (16 kHz mono for speech-to-text) and `wav_seconds`. Temp files rather than pipes, because browser recordings need seekable input.
+- **Change it when:** adding a speech provider (make `get_stt()` pick one) or spoken replies.
 
 #### `auth.py`: passwords and sessions
 
@@ -1022,8 +919,6 @@ The breakdowns below go from the middle out: the message path first, then the da
 | Conversations | `GET /api/conversations`, `GET .../{id}/messages` (with "AI used" and cost), `GET /api/messages/{id}/steps`, `POST .../{id}/reply`, `POST .../{id}/bot`, `GET /api/saved-replies` |
 | Orders | `GET /api/orders` (`?active=true` for the kitchen), `GET /api/orders/export.csv`, `PATCH /api/orders/{id}` (status, tells the customer) |
 | Settings | `GET` and `PUT /api/settings` (`orders_paused`) |
-| Bookings | `GET /api/bookings?days=14`, `PATCH /api/bookings/{id}` |
-| Approvals | `GET /api/approvals`, `POST /api/approvals/{id}` (approve or decline) |
 | Menu | `GET` and `POST /api/menu`, `PATCH` and `DELETE /api/menu/{id}`, `POST /api/menu/{id}/photo` |
 | Overview | `GET /api/analytics?days=30` |
 
@@ -1056,9 +951,8 @@ One line per option group, the same in the business file and the dashboard:
 
 [`backend/app/notify.py`](backend/app/notify.py)
 
-- `flag_for_human(db, conv, reason, stop_bot)` sets `needs_human` and the reason, optionally turns the AI off for that chat, and emails the owner only the first time a chat is flagged (one email per handoff, not per message).
-- `email_owner(subject, body)` sends to the business's `alert_email` (or `ALERT_EMAIL`) through SMTP on its own thread, so the customer's reply never waits on email. No SMTP settings, no email.
-- **Change it when:** alerts should go somewhere else too (WhatsApp to the owner, a push notification). This is the one place to add it.
+- `flag_for_human(db, conv, reason, stop_bot)` sets `needs_human` and the reason, and optionally turns the AI off for that chat. Staff see it in Conversations.
+- **Change it when:** alerts should reach the owner outside the dashboard (email, WhatsApp, a push notification). This is the one place to add it.
 
 #### `config.py`: settings and money
 
@@ -1073,7 +967,7 @@ One line per option group, the same in the business file and the dashboard:
 
 - [`shops.py`](backend/app/shops.py): `create(db, id, business, staff, **channels)` makes a business from a parsed business file, with its staff and menu; `add_new_menu_items` adds only items the database doesn't have; `pick` finds a business for command-line tools.
 - [`manage.py`](backend/manage.py): `list`, `add-shop <id> <file> --owner-password`, `update-shop <id> <file>`, `add-staff <id> <name> <password>`, `connect <id> --whatsapp-number-id ... --page-id ...`. Passwords are checked with `auth.strong_enough`.
-- [`seed.py`](backend/seed.py): creates the first business from `.env` and `BUSINESS_FILE` if the database has none, with a few sample orders, bookings or appointments (whichever the business takes). `--if-empty` is what Docker runs at start; `--demo` adds about 60 days of random history to fill the Overview; sample customers fit the business's timezone (Dhaka names and `017` numbers for the shop).
+- [`seed.py`](backend/seed.py): creates the first business from `.env` and `BUSINESS_FILE` if the database has none, with a few sample orders. `--if-empty` is what Docker runs at start; `--demo` adds about 60 days of random history to fill the Overview; sample customers fit the business's timezone (Dhaka names and `017` numbers for the shop).
 
 #### The frontend
 
@@ -1082,19 +976,18 @@ One line per option group, the same in the business file and the dashboard:
 | File | What's in it |
 |---|---|
 | [`App.jsx`](frontend/src/App.jsx) | `api()` (adds `X-Session`, logs out on 401), `usePoll` and `useLive`, toasts, the login page, the shell with the sidebar, and hash routing (`#/orders`, `#/simulator`) |
-| [`Dashboard.jsx`](frontend/src/Dashboard.jsx) | the pages: Conversations (with "AI used" steps), Orders, Kitchen/Packing, Bookings, Approvals, Menu with its item form |
+| [`Dashboard.jsx`](frontend/src/Dashboard.jsx) | the pages: Conversations (with "AI used" steps), Orders, Packing/Kitchen, Products/Menu with its item form |
 | [`Analytics.jsx`](frontend/src/Analytics.jsx) | the Overview: figures with change against the previous period, the revenue chart, top items |
 | [`Simulator.jsx`](frontend/src/Simulator.jsx) | the phone: text, hold-to-record voice, photos |
 | [`ui.jsx`](frontend/src/ui.jsx) | shared pieces: icons, buttons, `Segmented`, `Drawer`, money formatting |
 
-Which pages show and what they're called comes from `GET /api/business` (a salon has no Kitchen, a shop calls the Menu "Products"). In development Vite proxies `/api` and `/media` to the backend; in Docker, Caddy does. CI only builds it (`npm run build`).
+Which pages show and what they're called comes from `GET /api/business` (a business without orders has no Packing or Orders page, and the café calls Products "Menu"). In development Vite proxies `/api` and `/media` to the backend; in Docker, Caddy does. CI only builds it (`npm run build`).
 
 #### Docker and Caddy
 
 - **Backend image** ([`backend/Dockerfile`](backend/Dockerfile)): Python 3.12 slim with ffmpeg; starts with `seed.py --if-empty`, then uvicorn on port 8000 behind the proxy.
 - **Frontend image** ([`frontend/Dockerfile`](frontend/Dockerfile)): builds the React app, then serves it with Caddy. [`Caddyfile`](frontend/Caddyfile) sends `/api/*`, `/media/*`, `/webhook` and `/messenger/webhook` to the backend and everything else to `index.html` (so hash routes work on refresh).
 - **HTTPS:** set `SITE_ADDRESS` to a domain and Caddy gets and renews the certificate; the `caddy` volume keeps it across restarts (Let's Encrypt rate-limits re-issuing).
-- **Ollama on Windows with Docker in WSL2:** [`docker-compose.ollama.yml`](docker-compose.ollama.yml) lets the backend reach it.
 
 #### `backup.py`: backups
 
@@ -1120,8 +1013,8 @@ A backup on the same disk doesn't survive losing the server: copy the folder off
 | `test_agent.py` | the tools, ordering rules and the confirmation guard |
 | `test_webhook.py` | signatures, routing to the right business, dedupe, resume, every channel |
 | `test_tenancy.py` | one business can never see or change another's data, through any page or webhook |
-| `test_dashboard.py`, `test_approvals.py`, `test_analytics.py` | the API the dashboard uses |
-| `test_business_types.py` | the shop and the salon: what each business type gets |
+| `test_dashboard.py`, `test_analytics.py` | the API the dashboard uses, and the order reminder |
+| `test_business_types.py` | the shop: stock, orders for later days, its words on the dashboard |
 | `test_voice.py`, `test_backup.py`, `test_eval.py` | voice notes, backups, the eval's own checks |
 
 A bug fix or new rule starts with a failing test in the matching file.
@@ -1133,11 +1026,11 @@ The tests can't tell whether the real model behaves; [`eval.py`](backend/eval.py
 ```mermaid
 flowchart TD
     Y["cases.yaml"] --> F["pick cases by word (optional)"]
-    F --> D["for each case: a fresh throwaway database<br/>with its business file (cafe by default, or shop / salon)<br/>plus setup_order / setup_booking"]
+    F --> D["for each case: a fresh throwaway database<br/>with its business file (cafe by default, or the shop)<br/>plus setup_order"]
     D --> K["clock set to 10:00 business time"]
     K --> T["for each turn: agent.respond(say) with the real model,<br/>every tool call recorded"]
-    T --> C1["turn checks: calls, no_calls, reply regex, no_reply,<br/>order and booking counts"]
-    C1 --> C2["end checks: called, called_any, needs_human,<br/>fields of order 1 / booking 1, approval kinds"]
+    T --> C1["turn checks: calls, no_calls, reply regex, no_reply,<br/>order count"]
+    C1 --> C2["end checks: called, called_any, needs_human,<br/>fields of order 1"]
     C2 --> R["pass or fail, transcript of failures, cost in $"]
     R --> X["exit 1 if any case failed"]
 ```

@@ -5,7 +5,6 @@ sqlalchemy>=2
 pyyaml
 python-dotenv
 httpx
-boto3
 anthropic>=1.13  # fallbacks= in llm.py; older SDKs raise TypeError
 tzdata
 pytest

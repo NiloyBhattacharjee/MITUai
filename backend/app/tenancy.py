@@ -1,6 +1,6 @@
 """Which business the current request or message belongs to.
 
-Everything a business owns (menu, chats, orders, bookings, ...) is a db.Scoped table, and every query on one is filtered to
+Everything a business owns (menu, chats, orders, ...) is a db.Scoped table, and every query on one is filtered to
 the business in scope here; with no business in scope it raises instead. So a forgotten filter can't show one business's orders to
 another. Dashboard requests get their scope from the login session, webhook messages from the phone number or page they
 were sent to, and background jobs set it per business.

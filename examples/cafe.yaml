@@ -1,17 +1,17 @@
-# A café: pickup and delivery orders for today, table bookings, allergens. The tests and the eval run on this one.
+# A café: pickup and delivery orders for today, allergens. The tests and the eval run on this one.
 # Run it with BUSINESS_FILE=examples/cafe.yaml, or add it next to other businesses:
 #   cd backend && python manage.py add-shop little-fern ../examples/cafe.yaml --owner-password PASSWORD
 name: Little Fern Café
 kind: a café
 agent_name: Mitu
-# alert_email: owner@example.com   # who gets "needs a person" and approval emails (default: ALERT_EMAIL in .env)
 timezone: Australia/Sydney
 currency: "$"
 location: "42 King Street, Newtown NSW 2042. Street parking on King St, Newtown station is a 5-minute walk."
 about: "Neighbourhood café: specialty coffee, all-day breakfast and lunch, and dinner on Thursday to Saturday. Dine in, pickup or local delivery."
+labels: {kitchen: Kitchen, menu: Menu}  # dashboard page names (a shop's are Packing and Products)
 
 # Opening hours (24-hour clock). Several periods: "07:00-11:00, 17:00-21:00". Leave a day out (or write closed) to close it.
-# Orders and bookings are only accepted for times inside these.
+# Orders are only accepted for times inside these.
 hours:
   mon: "07:00-15:00"
   tue: "07:00-15:00"
@@ -31,16 +31,9 @@ fulfilment:
 payment_methods:
   in_person: {label: Pay in person, note: "Pay by card or cash when you collect, or to the driver on delivery."}
 
-reservations:
-  capacity: 40                  # seats; bookings within a sitting's length of each other share them
-  sitting_minutes: 90
-  max_party: 8                  # bigger groups go to the team
-  last_booking_before_close: 60 # minutes before closing
-  days_ahead: 30
-
 allergen_note: "Our kitchen handles nuts, gluten, dairy, eggs and soy, so we can't guarantee any dish is free of them."
 
-# Fixed replies that bypass the LLM, and messages the dashboard sends ({order_id}, {when} and {party_size} are filled in).
+# Fixed replies that bypass the LLM, and messages the dashboard sends ({order_id} is filled in).
 messages:
   handoff: "No problem, someone from our team will reply here shortly."
   unsupported_media: "Sorry, I can only read text, voice notes and photos (JPG/PNG) for now. Type your question, or ask for a person."
@@ -51,18 +44,12 @@ messages:
   order_ready_pickup: "Your order #{order_id} is ready to collect at the counter."
   order_ready_delivery: "Your order #{order_id} is on its way."
   order_cancelled: "Your order #{order_id} has been cancelled. Message us here if you have any questions."
-  booking_cancelled: "Your booking for {party_size} on {when} has been cancelled. Message us here if you have any questions."
   quote_reminder: "Just checking: would you like me to place your order ({total})? Reply yes to confirm, or tell me what to change."
-  # When staff answer a request in the dashboard's Approvals page ({summary} and {note}, the staff's message, are filled in).
-  approval_approved: "Good news: the team approved your request ({summary}). {note}"
-  approval_declined: "Sorry, the team couldn't approve your request ({summary}). {note}"
-  large_booking_approved: "Good news: your table for {party_size} on {when} is booked (booking #{booking_id}). {note}"
 
 # Quick replies staff can insert in the dashboard's chat box.
 try_messages:
   - {topic: Menu and price, text: "How much is a large oat flat white?"}
   - {topic: Place an order, text: "Can I order a smashed avo with a poached egg for pickup asap?"}
-  - {topic: Book a table, text: "Table for 4 tomorrow at 12:30?"}
   - {topic: Dietary, text: "What vegan breakfast do you have?"}
   - {topic: Opening hours, text: "Are you open on Sunday afternoon?"}
   - {topic: Human handoff, text: "I want to talk to a real person"}

@@ -1,6 +1,6 @@
 import { cloneElement, useEffect, useState } from 'react'
 import Simulator from './Simulator.jsx'
-import { Approvals, Bookings, Chats, Kitchen, Menu, Orders } from './Dashboard.jsx'
+import { Chats, Kitchen, Menu, Orders } from './Dashboard.jsx'
 import Analytics from './Analytics.jsx'
 import Landing from './Landing.jsx'
 import { Icon, cx, setCurrency } from './ui.jsx'
@@ -89,8 +89,6 @@ const PAGES = [
   // needs: whether this business uses the page; label: its name, unless /api/business gives another (Packing, Products)
   { id: 'kitchen', label: 'Kitchen', el: <Kitchen />, needs: (s) => s.orders !== false },
   { id: 'orders', label: 'Orders', el: <Orders />, needs: (s) => s.orders !== false },
-  { id: 'bookings', label: 'Bookings', el: <Bookings />, needs: (s) => s.tables !== false || s.appointments },
-  { id: 'approvals', label: 'Approvals', short: 'Approve', el: <Approvals /> },
   { id: 'chats', label: 'Conversations', short: 'Chats', el: <Chats /> },
   { id: 'menu', label: 'Menu', el: <Menu /> },
 ]
@@ -122,7 +120,7 @@ function Login({ onDone }) {
         <Brand light />
         <div className="relative max-w-md">
           <h1 className="text-4xl font-semibold tracking-tight leading-[1.1]">Your shop's AI assistant: every DM answered, every order taken.</h1>
-          <p className="mt-5 text-white/60 leading-relaxed">Orders, stock, bookings and every WhatsApp, Messenger and Instagram chat in one place. Step in whenever a customer needs a person.</p>
+          <p className="mt-5 text-white/60 leading-relaxed">Orders, stock and every WhatsApp, Messenger and Instagram chat in one place. Step in whenever a customer needs a person.</p>
         </div>
         <p className="relative text-xs text-white/40">© {new Date().getFullYear()} Mitu</p>
       </div>
@@ -156,15 +154,14 @@ function Brand({ light }) {
 function Shell({ page, shop }) {
   const [convs] = useLive('/api/conversations', 5000)
   const [me] = useLive('/api/me', 60000)
-  const [asks] = useLive('/api/approvals', 5000)
   const waiting = convs?.filter((c) => c.needs_human).length
-  const counts = { chats: waiting, approvals: asks?.filter((a) => a.status === 'pending').length }
+  const counts = { chats: waiting }
   const pages = PAGES.filter((p) => !p.needs || p.needs(shop)).map((p) => ({ ...p, label: shop.labels?.[p.id] || p.label }))
   const current = pages.find((p) => p.id === page) || pages[0]
   const logout = () => { api('/api/logout', { method: 'POST' }).catch(() => {}).finally(() => dispatchEvent(new Event('logout'))) }
   const badge = (p) => counts[p.id] > 0 && (
     <span className="rounded-full bg-warn px-1.5 min-w-5 text-center text-[11px] font-semibold leading-5 text-surface"
-      title={p.id === 'chats' ? `${waiting} waiting for a person` : `${counts[p.id]} to decide`}>{counts[p.id]}</span>
+      title={`${waiting} waiting for a person`}>{counts[p.id]}</span>
   )
   return (
     <div className="min-h-dvh md:grid md:grid-cols-[240px_1fr]">
