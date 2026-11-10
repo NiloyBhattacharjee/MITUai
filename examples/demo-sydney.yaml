@@ -1,0 +1,69 @@
+# The public demo on the website (README: "A public demo for the website"): business.yaml's shop moved to Sydney, in
+# Australian dollars. No stock counts, so visitors can order as much as they like without selling it out.
+name: Nakshi Threads
+kind: an online clothing shop
+agent_name: Mitu
+timezone: Australia/Sydney
+currency: "$"
+location: "We ship across Australia. Pickup from our store: Shop 4, 21 Wigram Street, Harris Park NSW 2150."
+about: "Hand-finished kurtis, three-pieces, sarees and panjabis, made in small batches. We reply in English, Hindi, Urdu, Bangla and more."
+
+# When we pack and hand over orders.
+hours:
+  mon: "10:00-18:00"
+  tue: "10:00-18:00"
+  wed: "10:00-18:00"
+  thu: "10:00-20:00"
+  fri: "10:00-18:00"
+  sat: "10:00-17:00"
+  sun: "11:00-16:00"
+prep_minutes: 120          # the earliest an order can go out after it's placed
+orders_days_ahead: 7       # customers can ask for a later day
+quote_reminder_minutes: 30
+
+fulfilment:
+  sydney: {label: Delivery in Sydney metro, fee: 8, needs_address: true, note: "1-2 business days."}
+  australia: {label: Shipping Australia-wide, fee: 12, needs_address: true, note: "2-5 business days with Australia Post."}
+  pickup: {label: Pickup from our store, fee: 0, note: "Shop 4, 21 Wigram Street, Harris Park. Mention your order number."}
+
+payment_methods:
+  payid: {label: PayID, note: "Send the total to our PayID orders@nakshithreads.example and reply here with the receipt. We pack it once it arrives."}
+  pickup: {label: Pay on pickup, note: "Card or cash at the store. Only for pickup orders."}
+
+messages:
+  handoff: "No problem, someone from our team will reply here shortly."
+  unsupported_media: "Sorry, I can only read text, voice notes and photos (JPG/PNG) for now. Type your question, or ask for a person."
+  voice_unclear: "Sorry, I couldn't catch that voice note. Could you say it again or type it?"
+  voice_too_long: "That voice note is a bit long. Please send one under 2 minutes, or type it."
+  error: "Sorry, something went wrong on our side. Someone from our team will reply soon."
+  order_preparing: "We're packing your order #{order_id} now."
+  order_ready_pickup: "Your order #{order_id} is ready to collect from our store."
+  order_ready: "Your order #{order_id} is on its way."
+  order_cancelled: "Your order #{order_id} has been cancelled. Message us here if you have any questions."
+  quote_reminder: "Just checking: would you like me to place your order ({total})? Reply yes to confirm, or tell me what to change."
+  approval_approved: "Good news: the team approved your request ({summary}). {note}"
+  approval_declined: "Sorry, the team couldn't approve your request ({summary}). {note}"
+
+# Example messages offered in the website demo and the dashboard's chat simulator.
+try_messages:
+  - {topic: Price, text: "How much is the mustard kurti? Do you have it in M?"}
+  - {topic: Hindi, text: "क्या नीली कुर्ती L साइज़ में है?"}
+  - {topic: Shipping, text: "How much is shipping to Perth?"}
+  - {topic: Order, text: "I'll take the indigo kurti in L, delivered to Parramatta, paying by PayID"}
+
+saved_replies:
+  - "Thanks for your order! We'll confirm as soon as the PayID payment arrives."
+  - "Your parcel is with Australia Post and should reach you soon."
+
+menu:
+  - {id: P01, name: Indigo Block-print Kurti, category: kurti, price: 45, description: "Cotton, hand block-printed, three-quarter sleeves.",
+     options: ["Size*: S, M, L, XL"], aliases: [blue kurti, kurta, tunic]}
+  - {id: P02, name: Mustard Embroidered Kurti, category: kurti, price: 52, description: "Cotton with hand embroidery at the neck.",
+     options: ["Size*: S, M, L, XL"], aliases: [yellow kurti, kurta]}
+  - {id: P03, name: Jamdani Three-piece, category: three-piece, price: 99, description: "Kameez, salwar and orna. Unstitched.",
+     aliases: [salwar kameez, 3 piece, three piece]}
+  - {id: P04, name: Tangail Cotton Saree, category: saree, price: 89, description: "Handloom cotton with a contrast border, 5.5 m.",
+     options: ["Colour*: Red, Green, Off-white"], aliases: [sari, cotton saree]}
+  - {id: P05, name: Men's Cotton Panjabi, category: panjabi, price: 59, available: false, description: "Cotton, mandarin collar, wooden buttons.",
+     options: ["Size*: 38, 40, 42, 44"], aliases: [punjabi, kurta]}
+  - {id: P06, name: Gift Wrapping, category: extras, price: 5, description: "Handmade paper and a card with your message.", aliases: [gift wrap]}

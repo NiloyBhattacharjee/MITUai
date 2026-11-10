@@ -168,6 +168,17 @@ On items, `stock: 12` makes the assistant count them down (it never sells more t
 .venv/bin/python manage.py add-shop bloom ../examples/salon.yaml --owner-password 'a-long-password'
 ```
 
+### A public demo for the website
+
+The marketing site can let visitors chat with one business, typed or by voice note, without signing in: `POST /api/demo/message`, `POST /api/demo/voice` and `GET /api/demo/{visitor}/messages`, where `visitor` is a random ID the browser keeps. It's off until `DEMO_SHOP` is set. Because strangers are spending your LLM money, each browser and each IP gets `DEMO_MESSAGES_PER_VISITOR` messages (default 20) and everyone together gets `DEMO_MESSAGES_PER_DAY` (default 300); after that the demo answers 429. The demo business never emails anyone, so a visitor asking for a person doesn't reach your inbox. Its chats, orders and bookings show in its own dashboard like any other business's.
+
+```bash
+.venv/bin/python manage.py add-shop demo ../examples/demo-sydney.yaml --owner-password 'a-long-password'
+# then in .env: DEMO_SHOP=demo and DEMO_ORIGINS=https://your-website.example
+```
+
+`examples/demo-sydney.yaml` is the shop from `business.yaml` in Sydney and Australian dollars, with no `stock` counts so visitors can't sell it out.
+
 ## 5. CI/CD and deploying
 
 `.github/workflows/ci-cd.yml` runs on every push and pull request:
@@ -200,6 +211,8 @@ The flow: WhatsApp `audio` message → `GET /{media_id}` → download with the t
 - `STT_PROVIDER=aws`: Amazon Transcribe batch in `TRANSCRIBE_LANGUAGE` (default `en-US`). It uploads to `TRANSCRIBE_S3_BUCKET`, runs a job, polls, then deletes the object and the job.
 - To compare both on the same recordings, run `python compare_stt.py backend/media/*.ogg`. It prints text, detected language, confidence and latency per provider.
 - `VOICE_REPLY=true` also sends a spoken reply (OpenAI TTS → ffmpeg to OGG/Opus → `POST /{phone_number_id}/media` → audio message). The text version is always sent too.
+
+**Languages.** The assistant replies in the language the customer writes or speaks in; there's nothing to switch on. For voice notes in several languages, use `STT_PROVIDER=openai` (it detects the language itself); Amazon Transcribe only listens for the one `TRANSCRIBE_LANGUAGE`. Whisper is reliable in about 57 languages (Hindi, Urdu, Nepali, Tamil, Vietnamese, Indonesian, Tagalog, Thai, Mandarin, Arabic, …) and weak on Bengali, Punjabi, Gujarati, Telugu, Sinhala, Burmese and Khmer. The fixed messages in the business file (handoff, "couldn't catch that voice note", order updates, approvals) are sent as written, so they're in whatever language you wrote them in.
 
 ## Decisions
 
