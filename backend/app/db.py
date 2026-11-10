@@ -22,10 +22,10 @@ class Base(DeclarativeBase):
     pass
 
 
-# --- the platform: cafés, their staff, logins ------------------------------------------------------
+# --- the platform: businesses, their staff, logins ------------------------------------------------
 
 class Shop(Base):
-    """One café. config is its business.yaml without the menu; the channel ids route incoming webhooks to it."""
+    """One business. config is its business.yaml without the menu; the channel ids route incoming webhooks to it."""
     __tablename__ = "shops"
     id: Mapped[str] = mapped_column(String(40), primary_key=True)  # short slug staff type to sign in, e.g. little-fern
     config: Mapped[dict] = mapped_column(JSON)
@@ -53,20 +53,20 @@ class LoginSession(Base):
     created_at: Mapped[datetime] = mapped_column(default=now)
 
 
-# --- what each café owns -----------------------------------------------------------------------------
+# --- what each business owns ----------------------------------------------------------------------
 
 class Scoped:
-    """A row that belongs to one café. New rows get the café in scope; every query is filtered to it (below)."""
+    """A row that belongs to one business. New rows get the business in scope; every query is filtered to it (below)."""
     shop_id: Mapped[str] = mapped_column(String(40), index=True, default=lambda: tenancy.shop_id())
 
 
 @event.listens_for(Session, "do_orm_execute")
-def _only_this_cafe(state):
+def _only_this_business(state):
     if not (state.is_select or state.is_update or state.is_delete):
         return
     if not any(issubclass(m.class_, Scoped) for m in state.all_mappers):
         return
-    shop = tenancy.shop_id()  # raises when no café is in scope: never an unfiltered query
+    shop = tenancy.shop_id()  # raises when no business is in scope: never an unfiltered query
     state.statement = state.statement.options(with_loader_criteria(Scoped, lambda cls: cls.shop_id == shop, include_aliases=True))
 
 
@@ -74,7 +74,7 @@ class MenuItem(Scoped, Base):
     __tablename__ = "menu_items"
     __table_args__ = (UniqueConstraint("shop_id", "id"),)
     pk: Mapped[int] = mapped_column(primary_key=True)
-    id: Mapped[str] = mapped_column(String(20))  # the café's own code, e.g. M01
+    id: Mapped[str] = mapped_column(String(20))  # the business's own code, e.g. M01
     name: Mapped[str] = mapped_column(String(200))
     category: Mapped[str] = mapped_column(String(50))
     description: Mapped[str] = mapped_column(Text, default="")
@@ -98,7 +98,7 @@ def new_item(data: dict) -> MenuItem:
 
 class Conversation(Scoped, Base):
     __tablename__ = "conversations"
-    id: Mapped[str] = mapped_column(String(100), primary_key=True)  # "<café>:<phone>", "<café>:messenger-<id>", "<café>:sim-<phone>", ...
+    id: Mapped[str] = mapped_column(String(100), primary_key=True)  # "<business>:<phone>", "<business>:messenger-<id>", "<business>:sim-<phone>", ...
     channel: Mapped[str] = mapped_column(String(20))  # whatsapp | messenger | instagram | sim
     phone: Mapped[str] = mapped_column(String(30))
     bot_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -129,7 +129,7 @@ class SeenWhatsAppMessage(Base):
     payload: Mapped[dict | None] = mapped_column(JSON)
     done: Mapped[bool | None] = mapped_column(Boolean)
     channel: Mapped[str | None] = mapped_column(String(20))
-    shop_id: Mapped[str | None] = mapped_column(String(40))  # which café it was sent to
+    shop_id: Mapped[str | None] = mapped_column(String(40))  # which business it was sent to
 
 
 class Order(Scoped, Base):
@@ -138,7 +138,7 @@ class Order(Scoped, Base):
     conversation_id: Mapped[str | None] = mapped_column(String(100), index=True)
     customer_name: Mapped[str] = mapped_column(String(100))
     phone: Mapped[str] = mapped_column(String(20))
-    fulfilment: Mapped[str] = mapped_column(String(20))  # a key of the café's fulfilment settings: pickup | delivery
+    fulfilment: Mapped[str] = mapped_column(String(20))  # a key of the business's fulfilment settings: pickup | delivery
     address: Mapped[str | None] = mapped_column(Text)
     ready_at: Mapped[datetime] = mapped_column(index=True)  # when the customer wants it (UTC)
     items: Mapped[list] = mapped_column(JSON)  # [{item_id, name, quantity, options: [names], notes, unit_price}]
@@ -207,7 +207,7 @@ class ToolCall(Scoped, Base):
 
 
 class LlmUsage(Scoped, Base):
-    """One row per AI API call, for the real cost on the Overview page (and what each café costs to run)."""
+    """One row per AI API call, for the real cost on the Overview page (and what each business costs to run)."""
     __tablename__ = "llm_usage"
     id: Mapped[int] = mapped_column(primary_key=True)
     conversation_id: Mapped[str] = mapped_column(String(100), index=True)

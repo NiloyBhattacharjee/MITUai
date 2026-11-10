@@ -1,6 +1,6 @@
 """Staff passwords (scrypt) and login sessions.
 
-Staff sign in once with their café's ID and their own password; the dashboard then sends the session token with every
+Staff sign in once with their business's ID and their own password; the dashboard then sends the session token with every
 request. Checking a slow password hash on every 2-second poll would be too slow, so the token stands in for it. Only its
 SHA-256 is stored, so a leaked database doesn't hand out live sessions.
 """
@@ -41,7 +41,7 @@ def _digest(token: str) -> str:
 
 
 def log_in(db, shop_id: str, password: str) -> tuple[str, Staff] | None:
-    """A new session token for the staff member of this café whose password this is."""
+    """A new session token for the staff member of this business whose password this is."""
     for person in db.scalars(select(Staff).where(Staff.shop_id == shop_id)):
         if check_password(password, person.password_hash):
             token = secrets.token_urlsafe(32)
@@ -52,7 +52,7 @@ def log_in(db, shop_id: str, password: str) -> tuple[str, Staff] | None:
 
 
 def session(token: str) -> tuple[Shop, str] | None:
-    """(café, staff name) for a live session token."""
+    """(business, staff name) for a live session token."""
     if not token:
         return None
     with Session() as db:

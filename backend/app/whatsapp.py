@@ -23,7 +23,7 @@ def _url(path: str) -> str:
 
 
 def _auth() -> dict:
-    return {"Authorization": f"Bearer {tenancy.shop().whatsapp_token}"}  # the café in scope's own token and number
+    return {"Authorization": f"Bearer {tenancy.shop().whatsapp_token}"}  # the business in scope's own token and number
 
 
 def _post_message(payload: dict) -> dict:
@@ -76,8 +76,8 @@ def valid_signature(body: bytes, header: str | None) -> bool:
 
 
 def shop_for(column: str, value) -> Shop | None:
-    """The café a webhook was sent to, by its WhatsApp phone number id or Page/Instagram id.
-    With a single café, everything goes to it, so a one-café install needs no ids set up."""
+    """The business a webhook was sent to, by its WhatsApp phone number id or Page/Instagram id.
+    With a single business, everything goes to it, so a one-business install needs no ids set up."""
     with Session() as db:
         shops = db.scalars(select(Shop)).all()
     return next((s for s in shops if value and getattr(s, column) == str(value)), shops[0] if len(shops) == 1 else None)
@@ -117,7 +117,7 @@ async def receive(request: Request, background: BackgroundTasks):
                 continue
             number = value.get("metadata", {}).get("phone_number_id")
             if not (shop := shop_for("whatsapp_phone_number_id", number)):
-                log.warning("WhatsApp message for number %s, which no café is connected to", number)
+                log.warning("WhatsApp message for number %s, which no business is connected to", number)
                 continue
             for msg in value["messages"]:
                 if first_time_seen(msg["id"], msg, "whatsapp", shop.id):

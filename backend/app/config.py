@@ -28,17 +28,17 @@ MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 
 LLM_PROVIDER = env("LLM_PROVIDER", "ollama")  # ollama | anthropic | bedrock
 
-# One Meta app for every café: it signs and verifies the webhooks. Each café's own WhatsApp number, Page and tokens
+# One Meta app for every business: it signs and verifies the webhooks. Each business's own WhatsApp number, Page and tokens
 # live on its row in the shops table (manage.py connect).
 WHATSAPP_VERIFY_TOKEN = env("WHATSAPP_VERIFY_TOKEN")
 WHATSAPP_APP_SECRET = env("WHATSAPP_APP_SECRET")
 GRAPH_API_VERSION = env("GRAPH_API_VERSION", "v21.0")
 PUBLIC_URL = env("PUBLIC_URL").rstrip("/")  # e.g. https://mitu.example.com; Messenger/Instagram fetch photos from here
 
-# The first café: seed.py creates it from these when the database has none (see README).
+# The first business: seed.py creates it from these when the database has none (see README).
 BUSINESS_FILE = Path(env("BUSINESS_FILE", str(ROOT / "business.yaml")))
 FIRST_SHOP_ID = env("SHOP_ID", "default")
-ADMIN_PASSWORD = env("ADMIN_PASSWORD")  # the first café's Owner login
+ADMIN_PASSWORD = env("ADMIN_PASSWORD")  # the first business's Owner login
 STAFF = {name.strip(): pw.strip() for name, _, pw in (pair.partition(":") for pair in env("STAFF").split(",")) if name.strip() and pw.strip()}
 WHATSAPP_TOKEN = env("WHATSAPP_TOKEN")
 WHATSAPP_PHONE_NUMBER_ID = env("WHATSAPP_PHONE_NUMBER_ID")

@@ -1,9 +1,9 @@
-"""Which café the current request or message belongs to.
+"""Which business the current request or message belongs to.
 
-Everything a café owns (menu, chats, orders, bookings, ...) is a db.Scoped table, and every query on one is filtered to
-the café in scope here; with no café in scope it raises instead. So a forgotten filter can't show one café's orders to
+Everything a business owns (menu, chats, orders, bookings, ...) is a db.Scoped table, and every query on one is filtered to
+the business in scope here; with no business in scope it raises instead. So a forgotten filter can't show one business's orders to
 another. Dashboard requests get their scope from the login session, webhook messages from the phone number or page they
-were sent to, and background jobs set it per café.
+were sent to, and background jobs set it per business.
 """
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -26,7 +26,7 @@ def scope(shop, staff: str | None = None):
 def shop():
     s = _shop.get()
     if s is None:
-        raise RuntimeError("No café in scope")
+        raise RuntimeError("No business in scope")
     return s
 
 
@@ -35,7 +35,7 @@ def shop_id() -> str:
 
 
 def cfg() -> dict:
-    """The café's settings: everything from its business.yaml except the menu."""
+    """The business's settings: everything from its business.yaml except the menu."""
     return shop().config
 
 

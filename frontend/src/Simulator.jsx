@@ -2,12 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { api, usePoll } from './App.jsx'
 import { Icon, cx } from './ui.jsx'
 
+// Used when the business file has no try_messages.
 const EXAMPLES = [
-  { topic: 'Menu & price', text: 'How much is a large oat flat white?' },
-  { topic: 'Place an order', text: 'Can I order a smashed avo with a poached egg for pickup asap?' },
-  { topic: 'Book a table', text: 'Table for 4 tomorrow at 12:30?' },
-  { topic: 'Dietary', text: 'What vegan breakfast do you have?' },
-  { topic: 'Opening hours', text: 'Are you open on Sunday afternoon?' },
+  { topic: 'What you sell', text: 'What do you have?' },
+  { topic: 'Opening hours', text: 'Are you open on Sunday?' },
   { topic: 'Human handoff', text: 'I want to talk to a real person' },
 ]
 
@@ -131,12 +129,12 @@ export default function Simulator() {
           Chat with {shop.agent_name}, {shop.name}'s AI assistant
         </h1>
         <p className="mt-4 text-muted max-w-xl leading-relaxed">
-          Ask about the menu, order for pickup or delivery, or book a table. Hold the mic to send a voice note, or send a photo. This runs the exact same agent as real WhatsApp messages, and every chat shows up live in the dashboard.
+          Ask what we have{shop.orders && ', order for pickup or delivery'}{shop.tables && ', book a table'}{shop.appointments && ', book an appointment'}. Hold the mic to send a voice note, or send a photo. This runs the exact same agent as real WhatsApp messages, and every chat shows up live in the dashboard.
         </p>
 
         <h2 className="mt-12 mb-4 text-sm font-medium">Try a message</h2>
         <div className="grid sm:grid-cols-2 gap-3">
-          {EXAMPLES.map((ex) => (
+          {(shop.try_messages?.length ? shop.try_messages : EXAMPLES).map((ex) => (
             <button key={ex.text} disabled={!started} onClick={() => send(ex.text)}
               className="card text-left p-4 transition enabled:hover:border-brand/50 enabled:hover:-translate-y-0.5 enabled:active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed">
               <span className="text-xs text-muted">{ex.topic}</span>

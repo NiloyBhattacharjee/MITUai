@@ -22,7 +22,7 @@ def flag_for_human(db, conv, reason: str, stop_bot=False):
 
 
 def email_owner(subject: str, body: str):
-    to, user = cfg().get("alert_email") or env("ALERT_EMAIL"), env("SMTP_USER")  # each café can have its own
+    to, user = cfg().get("alert_email") or env("ALERT_EMAIL"), env("SMTP_USER")  # each business can have its own
     if not (to and user):
         return
     msg = EmailMessage()

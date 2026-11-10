@@ -1,4 +1,4 @@
-"""Chat with the agent in the terminal: python cli.py [phone] [--shop ID]   (default: the first café)"""
+"""Chat with the agent in the terminal: python cli.py [phone] [--shop ID]   (default: the first business)"""
 import sys
 
 from app import shops, tenancy

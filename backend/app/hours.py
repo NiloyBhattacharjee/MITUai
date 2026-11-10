@@ -1,4 +1,4 @@
-"""Opening hours of the café in scope, in its timezone. Local times here are naive datetimes in that timezone;
+"""Opening hours of the business in scope, in its timezone. Local times here are naive datetimes in that timezone;
 the database stores naive UTC."""
 from datetime import date, datetime, time, timezone
 from zoneinfo import ZoneInfo
