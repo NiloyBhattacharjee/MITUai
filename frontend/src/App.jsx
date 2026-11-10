@@ -2,6 +2,7 @@ import { cloneElement, useEffect, useState } from 'react'
 import Simulator from './Simulator.jsx'
 import { Approvals, Bookings, Chats, Kitchen, Menu, Orders } from './Dashboard.jsx'
 import Analytics from './Analytics.jsx'
+import Landing from './Landing.jsx'
 import { Icon, cx, setCurrency } from './ui.jsx'
 
 export async function api(path, opts = {}) {
@@ -243,7 +244,8 @@ export default function App() {
   useEffect(() => {
     if (authed) api('/api/business').then((b) => { setCurrency(b.currency); setShop(b) }).catch(() => {})
   }, [authed])
-  if (!authed) return <Login onDone={() => setAuthed(true)} />
+  // Signed out: the landing page at the root (and its #section links); any dashboard route (#/login, #/orders, …) asks to sign in.
+  if (!authed) return hash.startsWith('#/') && hash !== '#/' ? <Login onDone={() => setAuthed(true)} /> : <Landing />
   if (hash === '#/simulator') return (
     <div className="min-h-dvh">
       <nav className="sticky top-0 z-20 flex items-center justify-between px-4 md:px-8 h-14 border-b border-line bg-canvas/80 backdrop-blur-lg">
