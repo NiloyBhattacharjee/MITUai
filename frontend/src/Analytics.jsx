@@ -112,7 +112,7 @@ export default function Analytics() {
 
   return (
     <>
-      <PageHeader title="Overview" sub="Orders and bookings your assistant took on WhatsApp, Messenger and Instagram.">
+      <PageHeader title="Overview" sub="Orders your assistant took on WhatsApp, Messenger and Instagram.">
         <Segmented label="Date range" value={days} onChange={setDays} options={RANGES.map((r) => ({ value: r, label: `${r} days` }))} />
       </PageHeader>
 
@@ -121,7 +121,7 @@ export default function Analytics() {
           <Stat label="Revenue" value={c ? money(c.revenue) : '–'} foot={delta('revenue')} />
           <Stat label="Orders" value={c?.orders ?? '–'} foot={delta('orders')} />
           <Stat label="Average order" value={c ? money(c.avg_order) : '–'} foot={delta('avg_order')} />
-          <Stat label="Bookings" value={c?.bookings ?? '–'} foot={c && plural(c.covers, 'guest')} />
+          <Stat label="Cancelled" value={c?.cancelled ?? '–'} foot={delta('cancelled')} />
           <Stat label="Handled by AI" value={c ? `${c.ai_handled_pct}%` : '–'}
             foot={c && `${plural(c.chats, 'chat')} · ${c.conversion_pct}% ordered`} />
           <Stat label="AI cost" value={c ? `$${c.ai_cost_usd.toFixed(2)}` : '–'}

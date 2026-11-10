@@ -51,7 +51,7 @@ def cafe():
 
 @pytest.fixture(autouse=True)
 def clock(monkeypatch, db):
-    """The café's clock reads 10:00 today, so order and booking rules don't depend on when the tests run."""
+    """The café's clock reads 10:00 today, so order rules don't depend on when the tests run."""
     now = datetime.now(hours.tz()).replace(hour=10, minute=0, second=0, microsecond=0, tzinfo=None)  # open at 10:00 every day
     monkeypatch.setattr(hours, "local_now", lambda: now)
     return now

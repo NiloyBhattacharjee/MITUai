@@ -1,6 +1,6 @@
 # Everything about the business lives here. This one is a shop that sells through Facebook, Instagram and WhatsApp and
-# delivers: orders up to a week ahead, stock counts, cash on delivery or bKash. examples/ has a café and a salon; which
-# sections a file has decides what the assistant does (README: "Other kinds of business").
+# delivers: orders up to a week ahead, stock counts, cash on delivery or bKash. examples/cafe.yaml is a café that takes
+# orders for today (README: "What a business does").
 name: Nakshi Threads
 kind: an online clothing shop
 agent_name: Mitu
@@ -42,8 +42,6 @@ messages:
   order_ready: "Your order #{order_id} is on its way."
   order_cancelled: "Your order #{order_id} has been cancelled. Message us here if you have any questions."
   quote_reminder: "Just checking: would you like me to place your order ({total})? Reply yes to confirm, or tell me what to change."
-  approval_approved: "Good news: the team approved your request ({summary}). {note}"
-  approval_declined: "Sorry, the team couldn't approve your request ({summary}). {note}"
 
 # Example messages the dashboard's chat simulator offers.
 try_messages:

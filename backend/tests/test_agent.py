@@ -6,10 +6,9 @@ from sqlalchemy import select
 
 from app import options
 from app.agent import build_history, respond
-from app.db import Booking, Conversation, Message, Order, Setting
+from app.db import Conversation, Message, Order, Setting
 from app.main import app
-from app.tools import (Ctx, book_table, cancel_booking, cancel_order, check_availability, create_order, find_item, photo_folder,
-                       saved_details, search_menu)
+from app.tools import Ctx, cancel_order, create_order, find_item, photo_folder, saved_details, search_menu
 
 client, H = TestClient(app), {"X-Session": "pw"}
 ORDER = {"customer_name": "Olivia Chen", "phone": "0412 345 678", "fulfilment": "pickup", "pickup_time": "asap",
@@ -116,31 +115,11 @@ def db_now():
     return now()
 
 
-def test_bookings_respect_hours_and_seats(db, clock):
-    c = ctx(db)
-    tomorrow = (clock + timedelta(days=1)).date().isoformat()
-    assert check_availability(c, tomorrow, "12:00", 4)["available"]
-    assert "can't book" in check_availability(c, tomorrow, "23:00", 2)["problems"][0]
-    assert "passed" in check_availability(c, clock.date().isoformat(), "08:00", 2)["problems"][0]
-    big = check_availability(c, tomorrow, "12:00", 12)
-    assert not big["available"] and "request_approval" in big["instruction"]
-
-    booked = book_table(c, "Liam", "0412 345 678", 4, tomorrow, "12:00", "high chair")
-    assert booked["status"] == "BOOKED" and booked["party_size"] == 4
-    assert book_table(c, "Liam", "0412345678", 4, tomorrow, "12:00")["status"] == "ALREADY_BOOKED"  # asked twice
-    for i in range(4):  # fill the room: 4 + 4 x 8 = 36 of 40 seats
-        book_table(ctx(db, f"sim-{i + 10}"), "Guest", "0400000000", 8, tomorrow, "12:00")
-    full = check_availability(c, tomorrow, "12:15", 6)
-    assert not full["available"] and full["other_times_that_day"] and "12:15" not in full["other_times_that_day"]
-
-    assert "error" in cancel_booking(ctx(db, "sim-99"), booked["booking_id"])  # someone else's
-    assert cancel_booking(c, booked["booking_id"])["status"] == "CANCELLED"
-    assert db.get(Booking, booked["booking_id"]).status == "cancelled"
-
-
 def test_saved_details_only_from_the_same_chat(db):
     c = ctx(db, "61412345678")
-    book_table(c, "Priya Sharma", "0412345678", 2, (db_now() + timedelta(days=2)).date().isoformat(), "12:00")
+    db.add(Order(conversation_id=c.conv.id, customer_name="Priya Sharma", phone="0412345678", fulfilment="pickup", ready_at=db_now(),
+                 items=[], subtotal=0, fee=0, total=0, payment_method="in_person"))
+    db.commit()
     back = saved_details(c)
     assert back["customer_name"] == "Priya Sharma" and back["phone"] == "0412345678"
     assert "customer_name" not in saved_details(ctx(db, "61499999999"))

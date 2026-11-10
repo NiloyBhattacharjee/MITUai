@@ -1,7 +1,6 @@
 """Agent tools: plain functions over the DB, plus the JSON schemas the LLM sees."""
 import logging
 import re
-import threading
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from difflib import SequenceMatcher
@@ -11,25 +10,16 @@ from sqlalchemy import select, update
 
 from . import hours, notify, options
 from .config import MEDIA_DIR, cents, money
-from .db import APPROVAL_KINDS, Approval, Booking, Conversation, MenuItem, Message, Order, Setting, now
+from .db import Conversation, MenuItem, Message, Order, Setting, now
 from .tenancy import cfg, shop_id
 
 log = logging.getLogger(__name__)
 MAX_QTY = 20
 
 
-# The business in scope's settings (its business.yaml). What it does follows from which sections it has:
-# fulfilment + payment_methods = it takes orders, reservations = table bookings, appointments = services by appointment.
+# The business in scope's settings (its business.yaml). With fulfilment + payment_methods it takes orders.
 def sells() -> bool:
     return bool(fulfilment())
-
-
-def tables() -> bool:
-    return "reservations" in cfg()
-
-
-def appts() -> dict:
-    return cfg().get("appointments") or {}
 
 
 def fulfilment() -> dict:
@@ -40,16 +30,8 @@ def payments() -> dict:
     return cfg().get("payment_methods", {})
 
 
-def res() -> dict:
-    return cfg()["reservations"]
-
-
 def prep() -> timedelta:
     return timedelta(minutes=cfg().get("prep_minutes", 15))
-
-
-def sitting() -> timedelta:
-    return timedelta(minutes=res()["sitting_minutes"])
 
 
 @dataclass
@@ -94,8 +76,7 @@ def item_dict(i: MenuItem) -> dict:
     return {"id": i.id, "name": i.name, "category": i.category, "price": money(i.price), "available": in_stock(i),
             "description": i.description, "options": options.describe(i.options), "dietary": i.dietary,
             "allergens": i.allergens, "has_photo": item_photo(i.id) is not None,
-            **({"left": i.stock} if i.stock is not None else {}),
-            **({"minutes": i.minutes, "booked_as": "appointment"} if i.minutes else {})}
+            **({"left": i.stock} if i.stock is not None else {})}
 
 
 def search_menu(ctx: Ctx, query: str) -> dict:
@@ -118,8 +99,7 @@ def get_menu(ctx: Ctx, category: str | None = None) -> dict:
     out = {}
     for i in ctx.db.scalars(select(MenuItem).order_by(MenuItem.id)):
         if not category or i.category == category.lower():
-            out.setdefault(i.category, []).append({"id": i.id, "name": i.name, "price": money(i.price), "available": in_stock(i),
-                                                  **({"minutes": i.minutes} if i.minutes else {})})
+            out.setdefault(i.category, []).append({"id": i.id, "name": i.name, "price": money(i.price), "available": in_stock(i)})
     return {"menu": out} if out else {"error": f"No category {category}", "categories": sorted({i.category for i in ctx.db.scalars(select(MenuItem))})}
 
 
@@ -202,15 +182,12 @@ def _ready_at(when, errors: list) -> datetime | None:
 
 def _validate(ctx: Ctx, a: dict) -> tuple[dict | None, list[str]]:
     if orders_paused(ctx.db):
-        return None, ["Online orders are paused right now. " + ("Offer to take a table booking, or try again later." if tables() else "Ask them to try again later.")]
+        return None, ["Online orders are paused right now. Ask them to try again later."]
     errors, lines = [], []
     for it in a.get("items") or []:
         i = find_item(ctx.db, it.get("item_id", ""))
         if not i:
             errors.append(f"Unknown item {it.get('item_id')}")
-            continue
-        if i.minutes:
-            errors.append(f"{i.name} is a service: book an appointment for it instead")
             continue
         if not in_stock(i):
             errors.append(f"{i.name} is sold out")
@@ -315,7 +292,7 @@ def order_dict(o: Order) -> dict:
 
 
 def _own(ctx: Ctx, model, key):
-    """A row from this chat only: customers can't look up or change other people's orders and bookings."""
+    """A row from this chat only: customers can't look up or change other people's orders."""
     row = ctx.db.get(model, int(key))
     return row if row and row.conversation_id == ctx.conv.id else None
 
@@ -344,267 +321,18 @@ def cancel_order(ctx: Ctx, order_id: int) -> dict:
 def saved_details(ctx: Ctx) -> dict:
     # Only this chat's own history: looking up by a typed phone number would hand out strangers' details.
     o = ctx.db.scalar(select(Order).where(Order.conversation_id == ctx.conv.id).order_by(Order.id.desc()).limit(1))
-    b = ctx.db.scalar(select(Booking).where(Booking.conversation_id == ctx.conv.id).order_by(Booking.id.desc()).limit(1))
-    latest = max((x for x in (o, b) if x), key=lambda x: x.created_at, default=None)
-    if not latest:
-        return {"note": "No earlier order or booking in this chat. Ask for the details."}
-    return {"customer_name": latest.customer_name, "phone": latest.phone, "address": o.address if o else None,
+    if not o:
+        return {"note": "No earlier order in this chat. Ask for the details."}
+    return {"customer_name": o.customer_name, "phone": o.phone, "address": o.address,
             "instruction": "Ask whether to use these again instead of asking for each one."}
-
-
-# --- bookings -----------------------------------------------------------------------------------
-
-def _bookable(at: datetime) -> bool:
-    last = timedelta(minutes=res().get("last_booking_before_close", 60))
-    return any(start <= at <= end - last for start, end in hours.periods(at.date()))
-
-
-def _seats_taken(db, at: datetime) -> int:
-    # ponytail: counts every booking within a sitting of this one as overlapping it, which over-counts a little
-    # (two that don't overlap each other both block this one); a per-table plan would be exact.
-    lo, hi = hours.to_utc(at - sitting()), hours.to_utc(at + sitting())
-    return sum(b.party_size for b in db.scalars(select(Booking).where(Booking.status == "booked", Booking.service_id.is_(None),
-                                                                      Booking.at > lo, Booking.at < hi)))
-
-
-def _fits(db, at: datetime, party: int) -> bool:
-    return _bookable(at) and at >= hours.local_now() and _seats_taken(db, at) + party <= res()["capacity"]
-
-
-def _alternatives(db, day: date, party: int, near: datetime) -> list[str]:
-    slots = [start + timedelta(minutes=15 * k) for start, end in hours.periods(day) for k in range(int((end - start).total_seconds() // 900) + 1)]
-    free = sorted((s for s in slots if _fits(db, s, party)), key=lambda s: abs(s - near))
-    return [f"{s:%H:%M}" for s in sorted(free[:3])]
-
-
-def _booking_time(date_s: str, time_s: str, party, errors: list, limit_party=True) -> datetime | None:
-    try:
-        at = datetime.combine(date.fromisoformat(str(date_s)), time.fromisoformat(str(time_s)))
-    except ValueError:
-        errors.append("date must be YYYY-MM-DD and time HH:MM (24-hour)")
-        return None
-    now = hours.local_now()
-    if not isinstance(party, int) or party < 1:
-        errors.append("party_size must be a whole number of people")
-    elif limit_party and party > res()["max_party"]:
-        errors.append(f"We book groups of up to {res()['max_party']} here; bigger groups are arranged by the team.")
-    if at < now:
-        errors.append(f"That time has passed (it's now {hours.label(now)}).")
-    elif at.date() > now.date() + timedelta(days=res()["days_ahead"]):
-        errors.append(f"We take bookings up to {res()['days_ahead']} days ahead.")
-    elif not _bookable(at):
-        errors.append(f"We can't book {hours.label(at)}. On {at:%A}s we're open {hours.spec(at.date())}, and the last booking is "
-                      f"{res().get('last_booking_before_close', 60)} minutes before closing.")
-    return None if errors else at
-
-
-def check_availability(ctx: Ctx, date: str, time: str, party_size: int) -> dict:
-    errors = []
-    at = _booking_time(date, time, party_size, errors)
-    if errors:
-        return {"available": False, "problems": errors, **({"instruction": "Get the name and phone, then call request_approval "
-                                                                            "with kind large_booking and the booking details."}
-                                                           if isinstance(party_size, int) and party_size > res()["max_party"] else {})}
-    if _fits(ctx.db, at, party_size):
-        return {"available": True, "when": hours.label(at), "party_size": party_size}
-    return {"available": False, "when": hours.label(at), "problems": ["Fully booked at that time."],
-            "other_times_that_day": _alternatives(ctx.db, at.date(), party_size, at)}
-
-
-def book_table(ctx: Ctx, customer_name: str, phone: str, party_size: int, date: str, time: str, notes: str = "") -> dict:
-    errors = []
-    at = _booking_time(date, time, party_size, errors)
-    if not (p := normalize_phone(phone)):
-        errors.append("phone must be a valid phone number")
-    if not str(customer_name).strip():
-        errors.append("customer_name is missing")
-    if errors:
-        return {"error": "Not booked", "problems": errors}
-    utc = hours.to_utc(at)
-    if same := ctx.db.scalar(select(Booking).where(Booking.conversation_id == ctx.conv.id, Booking.at == utc, Booking.status == "booked")):
-        return {"status": "ALREADY_BOOKED", "booking_id": same.id, "when": hours.label(at), "party_size": same.party_size}
-    if not _fits(ctx.db, at, party_size):
-        return {"error": "Fully booked at that time.", "other_times_that_day": _alternatives(ctx.db, at.date(), party_size, at)}
-    b = Booking(conversation_id=ctx.conv.id, customer_name=customer_name.strip(), phone=p, party_size=party_size, at=utc,
-                notes=str(notes or "").strip()[:500] or None)
-    ctx.db.add(b)
-    ctx.db.commit()
-    return {"status": "BOOKED", "booking_id": b.id, "when": hours.label(at), "party_size": party_size}
-
-
-def booking_dict(b: Booking) -> dict:
-    what = {"service": b.service, "with": b.provider, "minutes": b.minutes} if b.service_id else {"party_size": b.party_size}
-    return {"booking_id": b.id, "status": b.status, "when": hours.label(hours.to_local(b.at)), **what, "name": b.customer_name,
-            "notes": b.notes}
-
-
-def my_bookings(ctx: Ctx) -> dict:
-    rows = ctx.db.scalars(select(Booking).where(Booking.conversation_id == ctx.conv.id).order_by(Booking.at.desc()).limit(5)).all()
-    return {"bookings": [booking_dict(b) for b in rows]} if rows else {"error": "No bookings made in this chat."}
-
-
-def cancel_booking(ctx: Ctx, booking_id: int) -> dict:
-    b = _own(ctx, Booking, booking_id)
-    if not b:
-        return {"error": f"No booking #{booking_id} was made in this chat."}
-    if b.status != "booked" or hours.to_local(b.at) < hours.local_now():
-        return {"error": f"Booking #{b.id} is {b.status} and can't be cancelled here."}
-    b.status = "cancelled"
-    ctx.db.commit()
-    return {"status": "CANCELLED", "booking_id": b.id}
-
-
-# --- appointments -------------------------------------------------------------------------------
-
-_booking_lock = threading.Lock()
-# ponytail: one server process (like resume_unfinished), so checking that a time is free and booking it can't
-# interleave; with several workers this needs a database lock.
-
-
-def providers(service_id: str) -> list[str]:
-    """Who does a service: appointments.providers is {name: "all" or [service ids]}."""
-    return [p for p, does in appts().get("providers", {}).items() if does == "all" or service_id in does]
-
-
-def _service(db, service_id, errors: list) -> MenuItem | None:
-    i = find_item(db, service_id)
-    if not i or not i.minutes:
-        errors.append(f"No service {service_id}. Find it with search_menu (services have minutes).")
-    elif not i.available:
-        errors.append(f"{i.name} isn't on offer right now.")
-    else:
-        return i
-    return None
-
-
-def _appointment_at(date_s, time_s, errors: list) -> datetime | None:
-    """A local start time from "YYYY-MM-DD" and "HH:MM" (time_s None: the start of that day), within days_ahead."""
-    try:
-        at = datetime.combine(date.fromisoformat(str(date_s)), time.fromisoformat(str(time_s)) if time_s else time())
-    except ValueError:
-        errors.append("date must be YYYY-MM-DD and time HH:MM (24-hour)")
-        return None
-    today, ahead = hours.local_now().date(), appts().get("days_ahead", 30)
-    if at.date() < today:
-        errors.append("That day has passed.")
-    elif at.date() > today + timedelta(days=ahead):
-        errors.append(f"We book up to {ahead} days ahead.")
-    elif not hours.periods(at.date()):
-        errors.append(f"We're closed on {at:%A}s. Our hours: {hours.weekly()}")
-    else:
-        return at
-    return None
-
-
-def _busy(db, provider: str, start: datetime, end: datetime) -> bool:
-    """Whether the provider has an appointment overlapping start-end (local)."""
-    rows = db.scalars(select(Booking).where(Booking.provider == provider, Booking.status.in_(("booked", "arrived")), Booking.at < hours.to_utc(end),
-                                            Booking.at > hours.to_utc(start - timedelta(days=1))))
-    return any(hours.to_local(b.at) + timedelta(minutes=b.minutes or 0) > start for b in rows)
-
-
-def _free(db, service: MenuItem, start: datetime, provider: str | None = None) -> list[str]:
-    """Who can do the service starting then: inside opening hours, not in the past, not already booked."""
-    end = start + timedelta(minutes=service.minutes)
-    if start < hours.local_now() or not any(s <= start and end <= e for s, e in hours.periods(start.date())):
-        return []
-    return [p for p in providers(service.id) if provider in (None, p) and not _busy(db, p, start, end)]
-
-
-def _slots(db, service: MenuItem, day: date, provider: str | None = None) -> dict[str, list[str]]:
-    """{"14:30": [who is free]} for every start time that day, every slot_minutes."""
-    step, out = timedelta(minutes=appts().get("slot_minutes", 15)), {}
-    for start, end in hours.periods(day):
-        t = start
-        while t + timedelta(minutes=service.minutes) <= end:
-            if free := _free(db, service, t, provider):
-                out[f"{t:%H:%M}"] = free
-            t += step
-    return out
-
-
-def _check_provider(service: MenuItem | None, provider: str | None, errors: list):
-    if service and provider and provider not in providers(service.id):
-        errors.append(f"{provider} doesn't do {service.name}. Who does: {', '.join(providers(service.id))}")
-
-
-def appointment_times(ctx: Ctx, service_id: str, date: str, provider: str | None = None) -> dict:
-    errors = []
-    service, day = _service(ctx.db, service_id, errors), _appointment_at(date, None, errors)
-    _check_provider(service, provider, errors)
-    if errors:
-        return {"available": False, "problems": errors}
-    free = _slots(ctx.db, service, day.date(), provider)
-    if not free:
-        return {"available": False, "problems": [f"Nothing free for {service.name} on {day:%A %d %b}" + (f" with {provider}" if provider else "")],
-                "instruction": "Offer another day" + (" or someone else." if provider else ".")}
-    return {"service": service.name, "minutes": service.minutes, "price": money(service.price), "day": f"{day:%A %d %b}", "free_times": free}
-
-
-def book_appointment(ctx: Ctx, customer_name: str, phone: str, service_id: str, date: str, time: str, provider: str | None = None,
-                     notes: str = "") -> dict:
-    errors = []
-    service, at = _service(ctx.db, service_id, errors), _appointment_at(date, time, errors)
-    _check_provider(service, provider, errors)
-    if not (p := normalize_phone(phone)):
-        errors.append("phone must be a valid phone number")
-    if not str(customer_name).strip():
-        errors.append("customer_name is missing")
-    if errors:
-        return {"error": "Not booked", "problems": errors}
-    utc = hours.to_utc(at)
-    if same := ctx.db.scalar(select(Booking).where(Booking.conversation_id == ctx.conv.id, Booking.service_id == service.id,
-                                                   Booking.at == utc, Booking.status == "booked")):
-        return {"status": "ALREADY_BOOKED", "booking_id": same.id, "service": same.service, "with": same.provider, "when": hours.label(at)}
-    with _booking_lock:
-        free = _free(ctx.db, service, at, provider)
-        if not free:
-            return {"error": "That time isn't free.", "other_times_that_day": list(_slots(ctx.db, service, at.date(), provider))[:6]}
-        b = Booking(conversation_id=ctx.conv.id, customer_name=customer_name.strip(), phone=p, party_size=1, at=utc,
-                    service_id=service.id, service=service.name, provider=free[0], minutes=service.minutes,
-                    notes=str(notes or "").strip()[:500] or None)
-        ctx.db.add(b)
-        ctx.db.commit()
-    return {"status": "BOOKED", "booking_id": b.id, "service": b.service, "with": b.provider, "when": hours.label(at),
-            "minutes": b.minutes, "price": money(service.price)}
-
-
-def request_approval(ctx: Ctx, kind: str, summary: str, order_id: int | None = None, booking: dict | None = None) -> dict:
-    if kind not in APPROVAL_KINDS or (kind == "large_booking" and not tables()):
-        return {"error": f"kind must be one of {[k for k in APPROVAL_KINDS if k != 'large_booking' or tables()]}"}
-    if not str(summary or "").strip():
-        return {"error": "summary is missing: say in one line what the customer is asking for"}
-    if order_id and not _own(ctx, Order, order_id):
-        return {"error": f"No order #{order_id} was placed in this chat."}
-    details = None
-    if kind == "large_booking":
-        b, errors = booking or {}, []
-        at = _booking_time(b.get("date"), b.get("time"), b.get("party_size"), errors, limit_party=False)
-        if not (phone := normalize_phone(b.get("phone", ""))):
-            errors.append("booking.phone must be a valid phone number")
-        if not str(b.get("customer_name", "")).strip():
-            errors.append("booking.customer_name is missing")
-        if errors:
-            return {"error": "Not sent to the team yet", "problems": errors}
-        details = {"customer_name": b["customer_name"].strip(), "phone": phone, "party_size": b["party_size"], "at": at.isoformat(),
-                   "notes": str(b.get("notes") or "").strip()[:500] or None}
-    waiting = ctx.db.scalar(select(Approval).where(Approval.conversation_id == ctx.conv.id, Approval.kind == kind, Approval.status == "pending"))
-    if waiting:
-        return {"status": "ALREADY_WAITING", "approval_id": waiting.id, "instruction": "The team already has this request; they'll reply here."}
-    a = Approval(conversation_id=ctx.conv.id, kind=kind, summary=str(summary).strip()[:500], order_id=int(order_id) if order_id else None,
-                 details=details)
-    ctx.db.add(a)
-    ctx.db.commit()
-    return {"status": "WAITING_FOR_STAFF", "approval_id": a.id,
-            "instruction": "Tell the customer the team will check and reply here soon. Don't promise the outcome."}
 
 
 # --- the business -------------------------------------------------------------------------------
 
 def topics() -> list[str]:
     """What get_business_info can tell, given what this business does."""
-    return ["hours", "location", *(["ordering", "payment"] if sells() else []), *(["bookings"] if tables() else []),
-            *(["appointments"] if appts() else []), *(["allergens"] if cfg().get("allergen_note") else []), "about"]
+    return ["hours", "location", *(["ordering", "payment"] if sells() else []), *(["allergens"] if cfg().get("allergen_note") else []),
+            "about"]
 
 
 def get_business_info(ctx: Ctx, topic: str) -> dict:
@@ -619,11 +347,6 @@ def get_business_info(ctx: Ctx, topic: str) -> dict:
                         "orders_for": f"today and up to {days_ahead()} days ahead" if days_ahead() else "today only"}}
     if topic == "payment":
         return {topic: payments()}
-    if topic == "bookings":
-        return {topic: {"max_party": res()["max_party"], "days_ahead": res()["days_ahead"], "sitting_minutes": res()["sitting_minutes"]}}
-    if topic == "appointments":
-        does = {p: "everything" if s == "all" else s for p, s in appts().get("providers", {}).items()}
-        return {topic: {"days_ahead": appts().get("days_ahead", 30), "who_does_what": does, "policy": appts().get("policy")}}
     return {topic: b["allergen_note" if topic == "allergens" else topic]}
 
 
@@ -633,22 +356,12 @@ def escalate_to_human(ctx: Ctx, reason: str) -> dict:
 
 
 FUNCTIONS = {f.__name__: f for f in [search_menu, get_menu, get_item, send_item_photo, saved_details, create_order, get_order_status,
-                                     cancel_order, check_availability, book_table, appointment_times, book_appointment, my_bookings,
-                                     cancel_booking, request_approval, get_business_info, escalate_to_human]}
+                                     cancel_order, get_business_info, escalate_to_human]}
 
 
 def enabled() -> set[str]:
-    """The tools this business uses: no ordering tools for a salon, no table bookings for a shop."""
-    off = set()
-    if not sells():
-        off |= {"create_order", "get_order_status", "cancel_order"}
-    if not tables():
-        off |= {"check_availability", "book_table"}
-    if not appts():
-        off |= {"appointment_times", "book_appointment"}
-    if not (tables() or appts()):
-        off |= {"my_bookings", "cancel_booking"}
-    return set(FUNCTIONS) - off
+    """The tools this business uses: no ordering tools for one that doesn't take orders."""
+    return set(FUNCTIONS) - (set() if sells() else {"create_order", "get_order_status", "cancel_order"})
 
 _id = {"type": "object", "properties": {"item_id": {"type": "string"}}, "required": ["item_id"]}
 _line = {"type": "object", "properties": {
@@ -656,8 +369,6 @@ _line = {"type": "object", "properties": {
     "options": {"type": "array", "items": {"type": "string"}, "description": "Choice names, e.g. [\"Large\", \"Oat\"]"},
     "notes": {"type": "string", "description": "What the customer asked for on this item, e.g. extra hot, gift wrap"}},
     "required": ["item_id", "quantity"]}
-_when = {"date": {"type": "string", "description": "YYYY-MM-DD"}, "time": {"type": "string", "description": "HH:MM, 24-hour"},
-         "party_size": {"type": "integer"}}
 
 def specs() -> list[dict]:
     """What the LLM sees, built per business: only the tools it uses, and its pickup/delivery and payment choices."""
@@ -670,15 +381,15 @@ def _all_specs() -> list[dict]:
             f'{days_ahead()} days ahead like "2026-10-14 13:30"') if days_ahead() else '"asap" or a time today like "13:30"'
     return [
         {"name": "search_menu",
-         "description": "Search what we sell or offer (the menu) by name or kind, e.g. 'flat white', 'vegan breakfast', 'blue kurti', "
-                        "'haircut'. Returns price, options with their extra cost, dietary tags, allergens, whether it's available, "
-                        "how many are left (if counted), and minutes for services booked as appointments.",
+         "description": "Search what we sell (the menu) by name or kind, e.g. 'flat white', 'vegan breakfast', 'blue kurti'. "
+                        "Returns price, options with their extra cost, dietary tags, allergens, whether it's available, "
+                        "and how many are left (if counted).",
          "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}},
-        {"name": "get_menu", "description": "Everything we sell or offer (or one category) with prices, for 'what do you have?' questions.",
+        {"name": "get_menu", "description": "Everything we sell (or one category) with prices, for 'what do you have?' questions.",
          "input_schema": {"type": "object", "properties": {"category": {"type": "string"}}}},
         {"name": "get_item", "description": "Full details of one item.", "input_schema": _id},
         {"name": "send_item_photo", "description": "Send the customer a photo of an item (only items with has_photo=true).", "input_schema": _id},
-        {"name": "saved_details", "description": "Name, phone and address from this customer's last order or booking in this chat, if any.",
+        {"name": "saved_details", "description": "Name, phone and address from this customer's last order in this chat, if any.",
          "input_schema": {"type": "object", "properties": {}}},
         {"name": "create_order",
          "description": f"Pickup or delivery orders, {'up to ' + str(days_ahead()) + ' days ahead' if days_ahead() else 'for today only'}. Two steps. confirmed=false with all details: checks everything and returns "
@@ -698,50 +409,16 @@ def _all_specs() -> list[dict]:
         {"name": "cancel_order",
          "description": "Cancel an order from this chat that we haven't started on. Only after the customer clearly asked to cancel it.",
          "input_schema": {"type": "object", "properties": {"order_id": {"type": "integer"}}, "required": ["order_id"]}},
-        {"name": "check_availability", "description": "Whether a table is free for a party at a date and time; suggests other times if not.",
-         "input_schema": {"type": "object", "properties": _when, "required": ["date", "time", "party_size"]}},
-        {"name": "book_table",
-         "description": "Book a table. Only after you've repeated the date, time, party size and name to the customer and they agreed.",
-         "input_schema": {"type": "object", "properties": {
-             "customer_name": {"type": "string"}, "phone": {"type": "string"}, **_when,
-             "notes": {"type": "string", "description": "e.g. high chair, birthday, outside table"}},
-             "required": ["customer_name", "phone", "date", "time", "party_size"]}},
-        {"name": "appointment_times",
-         "description": "Free start times for a service on a day, and who is free at each. Pass provider only if the customer asked for someone.",
-         "input_schema": {"type": "object", "properties": {
-             "service_id": {"type": "string"}, "date": {"type": "string", "description": "YYYY-MM-DD"}, "provider": {"type": "string"}},
-             "required": ["service_id", "date"]}},
-        {"name": "book_appointment",
-         "description": "Book a service. Only after you've repeated the service, weekday, date, time and who it's with, and the customer agreed.",
-         "input_schema": {"type": "object", "properties": {
-             "customer_name": {"type": "string"}, "phone": {"type": "string"}, "service_id": {"type": "string"},
-             "date": {"type": "string", "description": "YYYY-MM-DD"}, "time": {"type": "string", "description": "HH:MM, 24-hour"},
-             "provider": {"type": "string", "description": "Only if the customer asked for someone"},
-             "notes": {"type": "string", "description": "e.g. first visit, hair length, what they'd like done"}},
-             "required": ["customer_name", "phone", "service_id", "date", "time"]}},
-        {"name": "my_bookings", "description": "Bookings and appointments made in this chat.", "input_schema": {"type": "object", "properties": {}}},
-        {"name": "cancel_booking", "description": "Cancel a booking or appointment made in this chat. Only after the customer clearly asked to.",
-         "input_schema": {"type": "object", "properties": {"booking_id": {"type": "integer"}}, "required": ["booking_id"]}},
-        {"name": "request_approval",
-         "description": "Ask the team to decide something you can't: a refund or remake for an order (refund), a discount or freebie "
-                        "(discount), a booking for a group bigger than we book (large_booking, with the booking details), or another "
-                        "exception (special_request). The team answers in the dashboard and the customer is told here automatically.",
-         "input_schema": {"type": "object", "properties": {
-             "kind": {"type": "string", "enum": APPROVAL_KINDS},
-             "summary": {"type": "string", "description": "One line for the team, e.g. 'Refund for order #12: flat white was cold'"},
-             "order_id": {"type": "integer"},
-             "booking": {"type": "object", "description": "Only for large_booking", "properties": {
-                 "customer_name": {"type": "string"}, "phone": {"type": "string"}, **_when, "notes": {"type": "string"}}}},
-             "required": ["kind", "summary"]}},
         {"name": "get_business_info",
          "description": "Facts about us: opening hours (and whether we're open now), location and parking, ordering (pickup/delivery, "
-                        "fees, times, whether orders are paused), payment, booking or appointment rules, allergen policy, about.",
+                        "fees, times, whether orders are paused), payment, allergen policy, about.",
          "input_schema": {"type": "object", "properties": {
              "topic": {"type": "string", "enum": topics()}},
              "required": ["topic"]}},
         {"name": "escalate_to_human",
-         "description": "Hand the chat to a person. Use when the customer asks for a person, is upset or angry, has a serious "
-                        "allergy question, wants a large or custom order or an event, or anything you can't answer from the tools.",
+         "description": "Hand the chat to a person. Use when the customer asks for a person, is upset or angry, asks for a refund, "
+                        "discount or another exception, has a serious allergy question, wants a large or custom order or an event, "
+                        "or anything you can't answer from the tools.",
          "input_schema": {"type": "object", "properties": {"reason": {"type": "string"}}, "required": ["reason"]}},
     ]
 

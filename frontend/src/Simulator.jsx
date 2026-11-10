@@ -129,7 +129,7 @@ export default function Simulator() {
           Chat with {shop.agent_name}, {shop.name}'s AI assistant
         </h1>
         <p className="mt-4 text-muted max-w-xl leading-relaxed">
-          Ask what we have{shop.orders && ', order for pickup or delivery'}{shop.tables && ', book a table'}{shop.appointments && ', book an appointment'}. Hold the mic to send a voice note, or send a photo. This runs the exact same agent as real WhatsApp messages, and every chat shows up live in the dashboard.
+          Ask what we have{shop.orders && ', order for pickup or delivery'}. Hold the mic to send a voice note, or send a photo. This runs the exact same agent as real WhatsApp messages, and every chat shows up live in the dashboard.
         </p>
 
         <h2 className="mt-12 mb-4 text-sm font-medium">Try a message</h2>

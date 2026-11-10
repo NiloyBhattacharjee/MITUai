@@ -2,7 +2,7 @@ from datetime import timedelta
 
 from fastapi.testclient import TestClient
 
-from app.db import Booking, Order, now
+from app.db import Order, now
 from app.main import app
 
 client = TestClient(app)
@@ -17,13 +17,11 @@ def order(total, status="new", days_ago=0, way="pickup", conv=None):
 
 def test_analytics_totals_exclude_cancelled_and_split_periods(db):
     db.add_all([order(1000), order(2000, way="delivery"), order(5000, status="cancelled"), order(3000, days_ago=10)])
-    db.add_all([Booking(customer_name="B", phone="0412345678", party_size=4, at=now() + timedelta(days=1)),
-                Booking(customer_name="C", phone="0412345678", party_size=2, at=now() + timedelta(days=1), status="cancelled")])
     db.commit()
     assert client.get("/api/analytics").status_code == 401
 
     r = client.get("/api/analytics?days=7", headers={"X-Session": "pw"}).json()
-    assert r["current"] == {**r["current"], "revenue": 3000, "orders": 2, "cancelled": 1, "avg_order": 1500, "bookings": 1, "covers": 4}
+    assert r["current"] == {**r["current"], "revenue": 3000, "orders": 2, "cancelled": 1, "avg_order": 1500}
     assert r["previous"]["revenue"] == 3000
     assert len(r["daily"]) == 7 and sum(d["revenue"] for d in r["daily"]) == 3000
     assert [(f["key"], f["label"]) for f in r["fulfilment"]] == [("delivery", "Delivery"), ("pickup", "Pickup")]

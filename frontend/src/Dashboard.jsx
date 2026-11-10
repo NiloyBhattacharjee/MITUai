@@ -1,10 +1,9 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { api, toast, useLive } from './App.jsx'
 import { Bubble, time } from './Simulator.jsx'
-import { Drawer, Empty, Icon, PageHeader, STATUS_STYLE, Segmented, Skeleton, Switch, cx, money, plural, statusLabel } from './ui.jsx'
+import { Drawer, Empty, Icon, PageHeader, STATUS_STYLE, Segmented, Skeleton, Switch, cx, money, statusLabel } from './ui.jsx'
 
 const STATUSES = ['new', 'preparing', 'ready', 'completed', 'cancelled']
-const BOOKING_STATUSES = ['booked', 'arrived', 'no_show', 'cancelled']
 const CHANNEL = {
   whatsapp: { label: 'WhatsApp', dot: 'bg-[#25d366]' },
   messenger: { label: 'Messenger', dot: 'bg-[#0866ff]' },
@@ -198,7 +197,7 @@ const clock = (iso) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', m
 const day = (iso) => new Date(iso).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })
 const detail = (err, fallback) => { try { const d = JSON.parse(err.message).detail; return typeof d === 'string' ? d : fallback } catch { return fallback } }
 
-// Optimistic status change for an order or booking; the server's note (e.g. "customer not notified") shows as a toast.
+// Optimistic status change for an order; the server's note (e.g. "customer not notified") shows as a toast.
 async function changeStatus(path, label, rows, setRows, refresh, id, status) {
   setRows(rows.map((r) => r.id === id ? { ...r, status } : r))
   try {
@@ -383,133 +382,6 @@ export function Kitchen({ title = 'Kitchen' }) {
   )
 }
 
-// --- bookings ------------------------------------------------------------------------------------
-
-export function Bookings() {
-  const [rows, refresh, setRows] = useLive('/api/bookings?days=14', 10000)
-  const days = []
-  for (const b of rows || []) {
-    const key = new Date(b.at).toDateString()
-    if (days.at(-1)?.key !== key) days.push({ key, label: day(b.at), rows: [] })
-    days.at(-1).rows.push(b)
-  }
-  const today = new Date().toDateString()
-  return (
-    <>
-      <PageHeader title="Bookings" sub="Tables and appointments the assistant booked for the next two weeks. Cancelling tells the customer." />
-      {!rows && <Skeleton className="h-48 rounded-2xl!" />}
-      {rows?.length === 0 && <div className="card"><Empty icon="bookings" title="No bookings yet">Customers can book in any chat.</Empty></div>}
-      <div className="space-y-6">
-        {days.map((d) => {
-          const covers = d.rows.filter((b) => b.status !== 'cancelled').reduce((n, b) => n + b.party_size, 0)
-          return (
-            <section key={d.key} className="card overflow-hidden">
-              <header className="flex items-baseline justify-between gap-3 px-5 py-3 border-b border-line bg-subtle/40">
-                <h2 className="text-sm font-medium">{d.key === today ? `Today · ${d.label}` : d.label}</h2>
-                <span className="text-xs text-muted tabular-nums">{plural(covers, 'guest')}</span>
-              </header>
-              <ul>
-                {d.rows.map((b) => (
-                  <li key={b.id} className={cx('flex flex-wrap items-center gap-x-5 gap-y-2 px-5 py-3 border-b border-line last:border-0', b.status === 'cancelled' && 'opacity-50')}>
-                    <span className="w-20 font-semibold tabular-nums whitespace-nowrap">{clock(b.at)}</span>
-                    {b.service
-                      ? <span className="w-40 text-sm"><span className="font-medium">{b.service}</span><span className="block text-xs text-muted">{b.provider} · {b.minutes} min</span></span>
-                      : <span className="flex items-center gap-1.5 w-16 text-sm text-muted tabular-nums"><Icon name="users" className="w-4 h-4" />{b.party_size}</span>}
-                    <div className="min-w-40 flex-1">
-                      <div className="text-sm font-medium">{b.customer_name}</div>
-                      <div className="text-xs text-muted tabular-nums">{b.phone}{b.notes && <span className="text-warn"> · {b.notes}</span>}</div>
-                    </div>
-                    <StatusSelect value={b.status} options={BOOKING_STATUSES} label={`Status of booking ${b.id}`}
-                      onChange={(s) => changeStatus('/api/bookings', 'booking', rows, setRows, refresh, b.id, s)} />
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )
-        })}
-      </div>
-    </>
-  )
-}
-
-// --- approvals -----------------------------------------------------------------------------------
-
-const KIND_LABEL = { refund: 'Refund', discount: 'Discount', large_booking: 'Big group', special_request: 'Special request' }
-
-function ApprovalCard({ a, onDone }) {
-  const [note, setNote] = useState('')
-  const [busy, setBusy] = useState(false)
-  const decide = async (decision) => {
-    setBusy(true)
-    try {
-      onDone(await api(`/api/approvals/${a.id}`, { method: 'POST', body: JSON.stringify({ decision, note }) }))
-    } catch (err) {
-      toast(detail(err, 'Could not save your answer. Try again.'))
-      setBusy(false)
-    }
-  }
-  return (
-    <article className="enter card p-5">
-      <header className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className="chip bg-warn/10 text-warn">{KIND_LABEL[a.kind] || a.kind}</span>
-        <span className="text-xs text-faint">{customerName({ channel: a.channel, phone: a.customer || '' })} · {day(a.created_at)}, {clock(a.created_at)}</span>
-      </header>
-      <p className="mt-3 text-[15px] leading-relaxed">{a.summary}</p>
-      {a.booking && (
-        <p className="mt-2 text-sm text-muted">
-          {a.booking.party_size} people · {a.booking.when} · {a.booking.customer_name} · {a.booking.phone}
-          {a.booking.notes && <span className="text-warn"> · {a.booking.notes}</span>}
-        </p>
-      )}
-      {a.order && <p className="mt-2 text-sm text-muted">Order #{a.order.id} · {money(a.order.total)} · {a.order.items.join(', ')}</p>}
-      <label className="block mt-4">
-        <span className="text-sm font-medium">Message to the customer</span>
-        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Optional. Added to the answer they get."
-          className="field mt-1.5 h-auto! py-2.5 leading-relaxed" />
-      </label>
-      <div className="mt-4 flex justify-end gap-2">
-        <button disabled={busy} onClick={() => decide('declined')} className="btn btn-secondary">Decline</button>
-        <button disabled={busy} onClick={() => decide('approved')} className="btn btn-primary">{a.kind === 'large_booking' ? 'Approve and book' : 'Approve'}</button>
-      </div>
-    </article>
-  )
-}
-
-export function Approvals() {
-  const [rows, refresh, setRows] = useLive('/api/approvals', 5000)
-  const pending = rows?.filter((a) => a.status === 'pending') || []
-  const done = rows?.filter((a) => a.status !== 'pending') || []
-  const answered = (r) => {
-    setRows(rows.map((x) => x.id === r.id ? r : x))
-    toast(r.delivery_note || `${r.status === 'approved' ? 'Approved' : 'Declined'}. The customer has been told.`)
-    refresh()
-  }
-  return (
-    <>
-      <PageHeader title="Approvals" sub="Requests the assistant can't decide alone. Your answer goes straight to the customer's chat." />
-      {!rows && <Skeleton className="h-48 rounded-2xl!" />}
-      {rows && pending.length === 0 && (
-        <div className="card"><Empty icon="approvals" title="Nothing to decide">Refunds, discounts and big-group bookings land here.</Empty></div>
-      )}
-      <div className="space-y-4">{pending.map((a) => <ApprovalCard key={a.id} a={a} onDone={answered} />)}</div>
-      {done.length > 0 && (
-        <>
-          <h2 className="mt-10 mb-3 text-sm font-medium">Recently decided</h2>
-          <ul className="card divide-y divide-line">
-            {done.map((a) => (
-              <li key={a.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 text-sm">
-                <span className={cx('chip', STATUS_STYLE[a.status])}>{statusLabel(a.status)}</span>
-                <span className="flex-1 min-w-48">{a.summary}{a.note && <span className="text-muted"> · “{a.note}”</span>}</span>
-                <span className="text-xs text-faint">{a.decided_by} · {day(a.decided_at)}, {clock(a.decided_at)}</span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-    </>
-  )
-}
-
 // --- menu ----------------------------------------------------------------------------------------
 
 const Section = ({ title, hint, children }) => (
@@ -584,7 +456,7 @@ export function Menu({ title = 'Menu' }) {
               </div>
               <div className="px-4 pt-4">
                 <div className="font-medium leading-snug line-clamp-2">{i.name}</div>
-                <div className="text-xs text-faint truncate mt-1 capitalize">{i.category}{i.minutes && ` · ${i.minutes} min`}{i.stock != null && ` · ${i.stock} left`}{i.dietary.length > 0 && ` · ${i.dietary.join(', ')}`}</div>
+                <div className="text-xs text-faint truncate mt-1 capitalize">{i.category}{i.stock != null && ` · ${i.stock} left`}{i.dietary.length > 0 && ` · ${i.dietary.join(', ')}`}</div>
               </div>
             </button>
             <div className="px-4 pb-4 mt-4 flex items-center justify-between gap-2">
@@ -638,8 +510,8 @@ function ItemForm({ item, categories, onSaved, onCancel }) {
   const [f, setF] = useState(item
     ? { name: item.name, category: item.category, price: (item.price / 100).toFixed(2), description: item.description,
         options: item.options.join('\n'), dietary: item.dietary.join(', '), allergens: item.allergens.join(', '), aliases: item.aliases.join(', '),
-        stock: item.stock ?? '', minutes: item.minutes ?? '' }
-    : { name: '', category: '', price: '', description: '', options: '', dietary: '', allergens: '', aliases: '', stock: '', minutes: '' })
+        stock: item.stock ?? '' }
+    : { name: '', category: '', price: '', description: '', options: '', dietary: '', allergens: '', aliases: '', stock: '' })
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const set = (k) => (e) => { setF({ ...f, [k]: e.target.value }); setError('') }
@@ -647,7 +519,7 @@ function ItemForm({ item, categories, onSaved, onCancel }) {
     e.preventDefault()
     const body = { ...f, price: Number(f.price), options: f.options.split('\n').map((l) => l.trim()).filter(Boolean),
       dietary: csv(f.dietary), allergens: csv(f.allergens), aliases: csv(f.aliases),
-      stock: f.stock === '' ? null : Number(f.stock), minutes: f.minutes === '' ? null : Number(f.minutes) }
+      stock: f.stock === '' ? null : Number(f.stock) }
     setSaving(true)
     try {
       onSaved(await api(item ? `/api/menu/${item.id}` : '/api/menu', { method: item ? 'PATCH' : 'POST', body: JSON.stringify(body) }))
@@ -683,8 +555,6 @@ function ItemForm({ item, categories, onSaved, onCancel }) {
       {field('allergens', 'Allergens', { placeholder: 'milk, nuts' })}
       {field('stock', 'How many are left', { type: 'number', min: 0, step: 1, inputMode: 'numeric', placeholder: 'not counted' },
         'Optional. The assistant won\'t sell more; cancelled orders put them back.')}
-      {field('minutes', 'Appointment length (minutes)', { type: 'number', min: 5, step: 5, inputMode: 'numeric', placeholder: 'not a service' },
-        'Only for services customers book a time for.')}
       <div className="sm:col-span-2">{field('aliases', 'Other names customers use', { placeholder: 'blue kurti, kurta' }, 'Optional. Helps the assistant find it.')}</div>
       {error && <p role="alert" className="sm:col-span-2 text-sm text-danger">{error}</p>}
       <div className="sm:col-span-2 flex justify-end gap-2 pt-1">

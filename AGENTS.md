@@ -1,8 +1,8 @@
 # Agent guide
 
-Mitu: an AI assistant for shops that sell in DMs on Facebook, Instagram and WhatsApp; the same code runs cafés and
-salons (`examples/`). One install runs many businesses. `business.yaml` is the demo shop; the tests and the eval run on
-`examples/cafe.yaml`, and the shop and salon have their own tests in `tests/test_business_types.py`. Read `README.md` for
+Mitu: an AI assistant for shops that sell in DMs on Facebook, Instagram and WhatsApp; the same code runs a café
+(`examples/cafe.yaml`). One install runs many businesses. `business.yaml` is the demo shop; the tests and the eval run on
+`examples/cafe.yaml`, and the shop has its own tests in `tests/test_business_types.py`. Read `README.md` for
 the layout and the **Decisions** section before changing behaviour; don't redo a decision without saying why.
 
 ## Commands

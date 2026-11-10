@@ -50,7 +50,7 @@ def stt_hint() -> str:
     from sqlalchemy import select
     with Session() as db:
         names = db.scalars(select(MenuItem.name)).all()
-    return f"Customer message to {cfg()['name']}: " + ", ".join(names) + ", pickup, delivery, booking."
+    return f"Customer message to {cfg()['name']}: " + ", ".join(names) + ", pickup, delivery."
 
 
 class OpenAISTT:

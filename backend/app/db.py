@@ -85,7 +85,6 @@ class MenuItem(Scoped, Base):
     aliases: Mapped[list] = mapped_column(JSON, default=list)  # other names customers use; helps search
     available: Mapped[bool] = mapped_column(Boolean, default=True)  # False = sold out
     stock: Mapped[int | None] = mapped_column(Integer)  # how many are left; None = not counted (a switch is enough)
-    minutes: Mapped[int | None] = mapped_column(Integer)  # set = a service booked as an appointment, not ordered
 
 
 def new_item(data: dict) -> MenuItem:
@@ -93,7 +92,7 @@ def new_item(data: dict) -> MenuItem:
     return MenuItem(id=data["id"], name=data["name"], category=str(data["category"]).lower(), description=data.get("description", ""),
                     price=cents(data["price"]), options=options.parse(data.get("options", [])), dietary=data.get("dietary", []),
                     allergens=data.get("allergens", []), aliases=data.get("aliases", []), available=data.get("available", True),
-                    stock=data.get("stock"), minutes=data.get("minutes"))
+                    stock=data.get("stock"))
 
 
 class Conversation(Scoped, Base):
@@ -151,41 +150,6 @@ class Order(Scoped, Base):
     created_at: Mapped[datetime] = mapped_column(default=now)
 
 
-class Booking(Scoped, Base):
-    __tablename__ = "bookings"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    conversation_id: Mapped[str | None] = mapped_column(String(100), index=True)
-    customer_name: Mapped[str] = mapped_column(String(100))
-    phone: Mapped[str] = mapped_column(String(20))
-    party_size: Mapped[int] = mapped_column(Integer)
-    at: Mapped[datetime] = mapped_column(index=True)  # UTC
-    # Appointments (a service with one person) also live here; a table booking leaves these empty.
-    service_id: Mapped[str | None] = mapped_column(String(20))
-    service: Mapped[str | None] = mapped_column(String(200))  # its name when booked
-    provider: Mapped[str | None] = mapped_column(String(50))  # who does it
-    minutes: Mapped[int | None] = mapped_column(Integer)
-    notes: Mapped[str | None] = mapped_column(Text)
-    status: Mapped[str] = mapped_column(String(20), default="booked")
-    created_at: Mapped[datetime] = mapped_column(default=now)
-
-
-class Approval(Scoped, Base):
-    """A request the assistant can't decide alone (refund, discount, big group): staff approve or decline it in the
-    dashboard and the customer is told in their chat."""
-    __tablename__ = "approvals"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    conversation_id: Mapped[str] = mapped_column(String(100), index=True)
-    kind: Mapped[str] = mapped_column(String(30))  # one of APPROVAL_KINDS
-    summary: Mapped[str] = mapped_column(Text)  # what the customer asked for, written by the assistant
-    order_id: Mapped[int | None] = mapped_column(Integer)
-    details: Mapped[dict | None] = mapped_column(JSON)  # large_booking: the booking to make if approved
-    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending | approved | declined
-    note: Mapped[str | None] = mapped_column(Text)  # staff's message to the customer
-    decided_by: Mapped[str | None] = mapped_column(String(50))
-    created_at: Mapped[datetime] = mapped_column(default=now)
-    decided_at: Mapped[datetime | None] = mapped_column()
-
-
 class Setting(Scoped, Base):
     """Switches staff flip in the dashboard, e.g. orders_paused."""
     __tablename__ = "settings"
@@ -222,8 +186,6 @@ class LlmUsage(Scoped, Base):
 
 
 ORDER_STATUSES = ["new", "preparing", "ready", "completed", "cancelled"]
-BOOKING_STATUSES = ["booked", "arrived", "no_show", "cancelled"]
-APPROVAL_KINDS = ["refund", "discount", "large_booking", "special_request"]
 
 
 def init_db():
