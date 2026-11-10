@@ -33,7 +33,7 @@ backend/
   app/pipeline.py      one entry point per message type (text / voice / photo / other), used by every channel
   app/whatsapp.py      WhatsApp webhook (verify, signature, dedupe) + Graph API client
   app/messenger.py     Messenger and Instagram webhook + Send API
-  app/voice.py         speech-to-text (OpenAI Whisper), ffmpeg helpers
+  app/voice.py         speech-to-text (OpenAI gpt-4o-transcribe or Whisper), ffmpeg helpers
   app/main.py          FastAPI: dashboard + simulator API
   manage.py            add businesses and staff, connect their WhatsApp number and Facebook Page
   seed.py  cli.py  eval.py  backup.py  tests/  evals/
@@ -195,9 +195,9 @@ Backups land in `~/mituai/backups` on the server. **Copy them off the server** (
 
 The flow: WhatsApp `audio` message → `GET /{media_id}` → download with the token → save the original (for the dashboard player) → ffmpeg to 16 kHz mono WAV → reject anything over 2 minutes → speech-to-text → if the transcript is empty or confidence is below `STT_MIN_CONFIDENCE`, reply "please repeat or type it" (never guess) → otherwise the same `agent.respond()` as typed text. The transcript is stored marked as a voice note, and each step's time is logged.
 
-Speech-to-text is OpenAI `whisper-1` (`OPENAI_API_KEY`), prompted with the menu's item names so it spells them right. Confidence comes from segment log-probabilities. Replies are always text.
+Speech-to-text is OpenAI `gpt-4o-transcribe` (`OPENAI_API_KEY`; `OPENAI_STT_MODEL=whisper-1` for the older model), prompted with the menu's item names so it spells them right. Confidence is the average probability of the transcript's words (Whisper: of its segments). Replies are always text.
 
-**Languages.** The assistant replies in the language the customer writes or speaks in; there's nothing to switch on. Whisper detects the language of a voice note itself, and is reliable in about 57 languages (Hindi, Urdu, Nepali, Tamil, Vietnamese, Indonesian, Tagalog, Thai, Mandarin, Arabic, …) and weak on Bengali, Punjabi, Gujarati, Telugu, Sinhala, Burmese and Khmer. The fixed messages in the business file (handoff, "couldn't catch that voice note", order updates) are sent as written, so they're in whatever language you wrote them in.
+**Languages.** The assistant replies in the language the customer writes or speaks in; there's nothing to switch on. The speech model detects the language of a voice note itself. `gpt-4o-transcribe` is the default because it's much better than `whisper-1` outside the biggest languages, Bangla included (Whisper is weak on Bangla, Punjabi, Gujarati, Telugu, Sinhala, Burmese and Khmer). When nearly all of a business's customers speak one language, set `voice_language` in its business file to its ISO code (`bn` for Bangla, `hi`, `ms`, `tl`, …): the model then doesn't have to guess. Check a new language on real recordings before promising it, and tune `STT_MIN_CONFIDENCE` if good notes get a "please repeat". The fixed messages in the business file (handoff, "couldn't catch that voice note", order updates) are sent as written, so they're in whatever language you wrote them in.
 
 ## Decisions
 
@@ -253,7 +253,7 @@ flowchart LR
         MEDIA[("media/<br/>voice notes, photos")]
     end
     LLM["LLM<br/>Ollama or Anthropic API"]
-    SPEECH["Speech-to-text<br/>OpenAI Whisper"]
+    SPEECH["Speech-to-text<br/>OpenAI gpt-4o-transcribe"]
 
     C -- "DMs, voice notes, photos" --> WA & MP
     WA & MP -- "signed webhooks" --> API
@@ -615,7 +615,7 @@ flowchart TD
     SAVE --> WAV["ffmpeg: 16 kHz mono WAV"]
     WAV --> LEN{"over 2 minutes?"}
     LEN -- "yes" --> TL["fixed reply: voice_too_long"]
-    LEN -- "no" --> STT["speech-to-text<br/>OpenAI Whisper with the menu's names as a hint"]
+    LEN -- "no" --> STT["speech-to-text<br/>OpenAI gpt-4o-transcribe with the menu's names as a hint"]
     STT -- "error" --> ER["fixed reply: error, chat flagged"]
     STT --> CF{"empty, or confidence below STT_MIN_CONFIDENCE?"}
     CF -- "yes" --> UN["fixed reply: voice_unclear<br/>(never guess an order)"]
@@ -895,7 +895,7 @@ The breakdowns below go from the middle out: the message path first, then the da
 
 [`backend/app/voice.py`](backend/app/voice.py)
 
-- **Speech-to-text:** `OpenAISTT.transcribe(wav) -> Transcript(text, language, confidence)`: Whisper, prompted with the menu's item names via `stt_hint`, confidence from segment log-probabilities. `get_stt()` builds it, and tests swap it for a fake.
+- **Speech-to-text:** `OpenAISTT.transcribe(wav) -> Transcript(text, language, confidence)`: gpt-4o-transcribe (or Whisper), prompted with the menu's item names via `stt_hint` and the business's `voice_language` if set, confidence from token (Whisper: segment) log-probabilities. `get_stt()` builds it, and tests swap it for a fake.
 - **ffmpeg helpers:** `to_wav` (16 kHz mono for speech-to-text) and `wav_seconds`. Temp files rather than pipes, because browser recordings need seekable input.
 - **Change it when:** adding a speech provider (make `get_stt()` pick one) or spoken replies.
 
