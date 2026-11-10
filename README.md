@@ -31,15 +31,15 @@ backend/
   app/tools.py         the AI's tools: search_menu, get_menu, get_item, send_item_photo, saved_details, create_order,
                        get_order_status, cancel_order, check_availability, book_table, my_bookings, cancel_booking,
                        request_approval, get_business_info, escalate_to_human
-  app/llm.py           LLM interface: Bedrock, the Anthropic API or Ollama (LLM_PROVIDER)
+  app/llm.py           LLM interface: the Anthropic API or Ollama (LLM_PROVIDER)
   app/agent.py         system prompt, history, tool loop, handoff
   app/pipeline.py      one entry point per message type (text / voice / photo / other), used by every channel
   app/whatsapp.py      WhatsApp webhook (verify, signature, dedupe) + Graph API client
   app/messenger.py     Messenger and Instagram webhook + Send API
-  app/voice.py         speech-to-text / text-to-speech (OpenAI, Amazon Transcribe), ffmpeg helpers
+  app/voice.py         speech-to-text (OpenAI Whisper), ffmpeg helpers
   app/main.py          FastAPI: dashboard + simulator API
   manage.py            add businesses and staff, connect their WhatsApp number and Facebook Page
-  seed.py  cli.py  eval.py  compare_models.py  backup.py  compare_stt.py  tests/  evals/
+  seed.py  cli.py  eval.py  backup.py  tests/  evals/
 frontend/              React + Vite + Tailwind (dashboard + simulator), served by Caddy in Docker
 ```
 
@@ -83,20 +83,13 @@ cd backend && .venv/bin/python eval.py              # all cases; exit code 1 if 
 .venv/bin/python eval.py booking cancel             # only cases whose name contains a word
 ```
 
-To pick a model, run the same cases on several and compare. It prints pass rate, cost and seconds per customer turn for each model, then every case one of them failed, and saves the table in `backend/evals/results/` (commit them to keep a record of what changed):
-
-```bash
-.venv/bin/python compare_models.py anthropic:claude-sonnet-5-5 anthropic:claude-haiku-4-5 ollama:qwen3:4b
-```
-
 Models vary from run to run, so a single failure is worth reading (the transcript is printed) before you change anything. Add a case whenever a real chat goes wrong.
 
-**Docker:** `cp .env.example .env`, fill it in, then `docker compose up --build` and open http://localhost (port 80 already taken? `HTTP_PORT=8080 docker compose up --build` and open http://localhost:8080). Rebuild with `--build` after pulling new code: plain `docker compose up` runs the old images. Docker inside WSL2 with Ollama on Windows: add `COMPOSE_FILE=docker-compose.yml:docker-compose.ollama.yml` to `.env` (see that file). The first start creates the first business from `.env` and `business.yaml`. Caddy serves the app and passes `/api`, `/media` and the webhooks to the backend, which has no public port. Seed data loads on first start, and the database and media live in the `data` volume. A `backup` container writes a `.tar.gz` of the database and media to `./backups` at start and then daily, keeping 14.
+**Docker:** `cp .env.example .env`, fill it in, then `docker compose up --build` and open http://localhost (port 80 already taken? `HTTP_PORT=8080 docker compose up --build` and open http://localhost:8080). Rebuild with `--build` after pulling new code: plain `docker compose up` runs the old images. The first start creates the first business from `.env` and `business.yaml`. Caddy serves the app and passes `/api`, `/media` and the webhooks to the backend, which has no public port. Seed data loads on first start, and the database and media live in the `data` volume. A `backup` container writes a `.tar.gz` of the database and media to `./backups` at start and then daily, keeping 14.
 
 ### LLM settings
 
 - `LLM_PROVIDER=ollama` (default) runs a local model through [Ollama](https://ollama.com), with no cloud account: `ollama pull qwen3:4b`, or set `OLLAMA_MODEL` to another one. It needs a model with tool support (and a vision model, like `qwen2.5vl`, for customer photos). Good for trying the flow for free; expect more mistakes and slow replies on a CPU.
-- `LLM_PROVIDER=bedrock` uses boto3 `bedrock-runtime` `converse` with tool use, with the model from `BEDROCK_MODEL_ID` and the standard AWS credentials. Enable Claude model access in the Bedrock console first. If your region needs an inference profile, use the prefixed ID (e.g. `us.anthropic.claude-opus-5-5`).
 - `LLM_PROVIDER=anthropic` uses the Anthropic API with `ANTHROPIC_API_KEY`. It runs at `LLM_EFFORT=low` for snappy chat replies, prompt caching is on, and server-side refusal fallbacks are on (`fallbacks: "default"`), so a false-positive safety decline is retried on another model instead of failing.
 
 ## 2. Connect real WhatsApp (Meta test number + ngrok)
@@ -196,10 +189,7 @@ Backups land in `~/mituai/backups` on the server. **Copy them off the server** (
 
 The flow: WhatsApp `audio` message → `GET /{media_id}` → download with the token → save the original (for the dashboard player) → ffmpeg to 16 kHz mono WAV → reject anything over 2 minutes → speech-to-text → if the transcript is empty or confidence is below `STT_MIN_CONFIDENCE`, reply "please repeat or type it" (never guess) → otherwise the same `agent.respond()` as typed text. The transcript is stored marked as a voice note, and each step's time is logged.
 
-- `STT_PROVIDER=openai`: OpenAI `whisper-1`, with a prompt listing the menu's item names so it spells them right. Confidence comes from segment log-probabilities.
-- `STT_PROVIDER=aws`: Amazon Transcribe batch in `TRANSCRIBE_LANGUAGE` (default `en-US`). It uploads to `TRANSCRIBE_S3_BUCKET`, runs a job, polls, then deletes the object and the job.
-- To compare both on the same recordings, run `python compare_stt.py backend/media/*.ogg`. It prints text, detected language, confidence and latency per provider.
-- `VOICE_REPLY=true` also sends a spoken reply (OpenAI TTS → ffmpeg to OGG/Opus → `POST /{phone_number_id}/media` → audio message). The text version is always sent too.
+Speech-to-text is OpenAI `whisper-1` (`OPENAI_API_KEY`), prompted with the menu's item names so it spells them right. Confidence comes from segment log-probabilities. Replies are always text.
 
 ## Decisions
 
@@ -256,9 +246,8 @@ flowchart LR
         DB[("SQLite<br/>shop.db")]
         MEDIA[("media/<br/>voice notes, photos")]
     end
-    LLM["LLM<br/>Ollama, Anthropic API or Bedrock"]
-    SPEECH["Speech<br/>OpenAI Whisper and TTS, or Amazon Transcribe"]
-    MAIL["SMTP<br/>alerts to the owner"]
+    LLM["LLM<br/>Ollama or Anthropic API"]
+    SPEECH["Speech-to-text<br/>OpenAI Whisper"]
 
     C -- "DMs, voice notes, photos" --> WA & MP
     WA & MP -- "signed webhooks" --> API
@@ -267,10 +256,9 @@ flowchart LR
     API --> DB & MEDIA
     API -- "prompt + tools" --> LLM
     API -- "audio" --> SPEECH
-    API -- "handoffs, approvals" --> MAIL
 ```
 
-Customers never see Mitu's own address: they write to the business's WhatsApp number, Facebook Page or Instagram account, and Meta forwards each message to Mitu's webhooks. Staff use the dashboard. Everything else (the LLM, speech and email) is called by the backend on the way through.
+Customers never see Mitu's own address: they write to the business's WhatsApp number, Facebook Page or Instagram account, and Meta forwards each message to Mitu's webhooks. Staff use the dashboard. Everything else (the LLM and speech-to-text) is called by the backend on the way through.
 
 ### How it's deployed
 
@@ -306,7 +294,6 @@ Everything runs in **one uvicorn process**. Inside it:
 | Handling a message (LLM, tools, reply) | FastAPI `BackgroundTasks` | An LLM turn takes seconds; Meta retries if the webhook is slow |
 | Re-running messages a restart cut off | `pipeline.resume_unfinished`, a thread started once at startup | So a crash mid-reply doesn't lose a customer's message |
 | The every-minute job (unanswered-quote reminders) | `main.every_minute`, a daemon thread | Loops over every business, each in its own scope |
-| Owner alert emails | one short thread per email in [`notify.py`](backend/app/notify.py) | The customer never waits on SMTP |
 
 Two locks keep concurrent work safe: `agent._locks` runs one agent turn at a time per chat (customers send bursts of messages), and `tools._booking_lock` makes checking a free appointment time and booking it one step. Both assume one process; the `ponytail:` comments next to them say what to change for several workers.
 
@@ -403,7 +390,6 @@ They take the same path as WhatsApp from `pipeline` onwards; only the edges diff
 | Conversation id | `<business>:<phone>` | `<business>:messenger-<id>` or `<business>:instagram-<id>` |
 | Skipped | status updates | read receipts, deliveries and echoes of our own replies |
 | Sending a photo | upload, then send with a caption | Meta fetches it from `PUBLIC_URL`; photo first, then the text |
-| Voice replies | yes, with `VOICE_REPLY=true` | text only |
 
 ### Duplicate webhooks and crash recovery
 
@@ -626,18 +612,15 @@ flowchart TD
     SAVE --> WAV["ffmpeg: 16 kHz mono WAV"]
     WAV --> LEN{"over 2 minutes?"}
     LEN -- "yes" --> TL["fixed reply: voice_too_long"]
-    LEN -- "no" --> STT["speech-to-text<br/>OpenAI Whisper with the menu's names as a hint,<br/>or Amazon Transcribe"]
+    LEN -- "no" --> STT["speech-to-text<br/>OpenAI Whisper with the menu's names as a hint"]
     STT -- "error" --> ER["fixed reply: error, chat flagged"]
     STT --> CF{"empty, or confidence below STT_MIN_CONFIDENCE?"}
     CF -- "yes" --> UN["fixed reply: voice_unclear<br/>(never guess an order)"]
     CF -- "no" --> AG["agent.respond(transcript, is_voice=True)"]
-    AG --> TTS{"VOICE_REPLY=true?"}
-    TTS -- "yes" --> OGG["TTS, ffmpeg to OGG/Opus, sent as audio too"]
-    TTS -- "no" --> TX["text reply"]
-    OGG --> TX
+    AG --> TX["text reply"]
 ```
 
-The fixed replies skip the LLM and come from `messages` in the business file. Each step's time is logged per voice note. See [Voice notes](#voice-notes) for the providers.
+The fixed replies skip the LLM and come from `messages` in the business file. Each step's time is logged per voice note. See [Voice notes](#voice-notes) for the settings.
 
 ### Photos, in and out
 
@@ -665,7 +648,7 @@ sequenceDiagram
     C->>A: This is the second time my order was wrong!
     A->>N: escalate_to_human(reason)
     N->>N: needs_human=True, bot off for this chat
-    N-->>S: email (only the first time it's flagged)
+    N-->>S: flagged in Conversations
     A->>C: A team member will reply here soon.
     C->>A: (more messages: stored, no AI reply)
     S->>C: staff reply from Conversations (inside 24 h)
@@ -687,7 +670,6 @@ sequenceDiagram
     C->>A: The kurti came torn, can I get a refund?
     A->>DB: request_approval(kind=refund, summary, order_id)
     Note over A,DB: one pending request per kind per chat, the order must be from this chat
-    A-->>S: email: approval needed
     A->>C: The team will check and reply here.
     S->>DB: approve or decline, optional note
     Note over S,DB: conditional update WHERE status=pending, so two staff can't both decide
@@ -909,7 +891,7 @@ The breakdowns below go from the middle out: the message path first, then the da
 [`backend/app/pipeline.py`](backend/app/pipeline.py)
 
 - **Owns:** turning an incoming event into an agent turn and a sent reply. `handle_whatsapp_message` and `handle_meta_event` take a raw webhook payload, set the business scope, and call `handle_text`, `handle_voice` or `handle_photo`.
-- **Sends:** `deliver(channel, phone, text, ogg, image)` is the only function that talks to a channel's Send API; `send_update` wraps it for messages Mitu starts, with the 24-hour check.
+- **Sends:** `deliver(channel, phone, text, image)` is the only function that talks to a channel's Send API; `send_update` wraps it for messages Mitu starts, with the 24-hour check.
 - **Fixed replies:** `canned_reply` stores the customer's message and answers from `messages` in the business file without the LLM (unsupported file types, unclear or long voice notes, errors).
 - **Background work:** `remind_unconfirmed` (every minute) and `resume_unfinished` (at startup).
 - **Change it when:** a new message type or a new channel arrives. Behaviour that every channel should share goes in here or in `agent.respond`, not in a channel module.
@@ -933,12 +915,12 @@ The breakdowns below go from the middle out: the message path first, then the da
 - **Results talk to the model:** errors come back as `{"error", "problems"}` and successes carry a `status` like `PLACED` or `QUOTE_ONLY_NOT_PLACED` and often an `instruction`, which is how the code steers what the model says next.
 - **Change it when:** the assistant needs a new ability. Add the function, its entry in `FUNCTIONS` and its schema, decide in `enabled()` which businesses get it, write a test, then run the eval.
 
-#### `llm.py`: one interface over three providers
+#### `llm.py`: one interface over two providers
 
 [`backend/app/llm.py`](backend/app/llm.py)
 
 - **Interface:** `run(system, history, tools, call_tool, usage) -> reply text`. That's all the rest of the app knows about LLMs.
-- **Providers:** `OllamaLLM` (local, the default, free), `AnthropicLLM` (prompt caching, low effort for short replies, server-side refusal fallback) and `BedrockLLM` (`converse` with tool use). `LLM_PROVIDER` picks one; `get_llm()` builds it once.
+- **Providers:** `OllamaLLM` (local, the default, free) and `AnthropicLLM` (prompt caching, low effort for short replies, server-side refusal fallback). `LLM_PROVIDER` picks one; `get_llm()` builds it once.
 - **Usage:** each API call appends tokens (including cache reads and writes) to `usage`; `cost_usd` prices it from `PRICES`, so the Overview shows the real cost per business. Ollama costs 0; an unknown model costs `None` rather than a guess.
 - **Images:** customer photos go to each provider in its own format.
 - **Change it when:** adding a provider or a model's price. Tests swap the whole thing for `FakeLLM` (see Testing).
@@ -967,7 +949,7 @@ The breakdowns below go from the middle out: the message path first, then the da
 [`backend/app/whatsapp.py`](backend/app/whatsapp.py)
 
 - **Webhook:** `GET /webhook` answers Meta's verification; `POST /webhook` checks the signature, finds the business by `phone_number_id`, records each message once and queues it.
-- **Graph API client:** `send_text`, `send_image`, `send_audio`, `upload_media`, `download_media`, `mark_read`, each with the token and number of the business in scope.
+- **Graph API client:** `send_text`, `send_image`, `upload_media`, `download_media`, `mark_read`, each with the token and number of the business in scope.
 - **Shared helpers** used by Messenger too: `valid_signature`, `shop_for`, `first_time_seen`, and the `http` client that tests replace with a mock transport.
 - **Change it when:** Meta changes its API (`GRAPH_API_VERSION`) or a new WhatsApp message type is supported (then also `pipeline.handle_whatsapp_message`).
 
@@ -980,14 +962,13 @@ The breakdowns below go from the middle out: the message path first, then the da
 - **Skips:** reads, deliveries and echoes of our own messages, so the assistant never answers itself.
 - **Change it when:** comment replies arrive (issue #16) or staff replies from the Meta inbox should pause the AI (issue #27).
 
-#### `voice.py`: speech in and out
+#### `voice.py`: speech-to-text
 
 [`backend/app/voice.py`](backend/app/voice.py)
 
-- **Interfaces:** `SpeechToText.transcribe(wav) -> Transcript(text, language, confidence)` and `TextToSpeech.synthesize(text) -> (audio, ext)`.
-- **Providers:** `OpenAISTT` (Whisper, prompted with the menu's item names via `stt_hint`, confidence from segment log-probabilities), `AWSTranscribeSTT` (batch job through S3, cleaned up afterwards) and `OpenAITTS`. `STT_PROVIDER` picks the speech-to-text one.
-- **ffmpeg helpers:** `to_wav` (16 kHz mono for STT), `to_ogg_opus` (what WhatsApp plays as a voice message) and `wav_seconds`. Temp files rather than pipes, because browser recordings need seekable input.
-- **Change it when:** adding a speech provider. `compare_stt.py` runs both on the same recordings to compare text, confidence and speed.
+- **Speech-to-text:** `OpenAISTT.transcribe(wav) -> Transcript(text, language, confidence)`: Whisper, prompted with the menu's item names via `stt_hint`, confidence from segment log-probabilities. `get_stt()` builds it, and tests swap it for a fake.
+- **ffmpeg helpers:** `to_wav` (16 kHz mono for speech-to-text) and `wav_seconds`. Temp files rather than pipes, because browser recordings need seekable input.
+- **Change it when:** adding a speech provider (make `get_stt()` pick one) or spoken replies.
 
 #### `auth.py`: passwords and sessions
 
@@ -1043,9 +1024,8 @@ One line per option group, the same in the business file and the dashboard:
 
 [`backend/app/notify.py`](backend/app/notify.py)
 
-- `flag_for_human(db, conv, reason, stop_bot)` sets `needs_human` and the reason, optionally turns the AI off for that chat, and emails the owner only the first time a chat is flagged (one email per handoff, not per message).
-- `email_owner(subject, body)` sends to the business's `alert_email` (or `ALERT_EMAIL`) through SMTP on its own thread, so the customer's reply never waits on email. No SMTP settings, no email.
-- **Change it when:** alerts should go somewhere else too (WhatsApp to the owner, a push notification). This is the one place to add it.
+- `flag_for_human(db, conv, reason, stop_bot)` sets `needs_human` and the reason, and optionally turns the AI off for that chat. Staff see it in Conversations.
+- **Change it when:** alerts should reach the owner outside the dashboard (email, WhatsApp, a push notification). This is the one place to add it.
 
 #### `config.py`: settings and money
 
@@ -1081,7 +1061,6 @@ Which pages show and what they're called comes from `GET /api/business` (a salon
 - **Backend image** ([`backend/Dockerfile`](backend/Dockerfile)): Python 3.12 slim with ffmpeg; starts with `seed.py --if-empty`, then uvicorn on port 8000 behind the proxy.
 - **Frontend image** ([`frontend/Dockerfile`](frontend/Dockerfile)): builds the React app, then serves it with Caddy. [`Caddyfile`](frontend/Caddyfile) sends `/api/*`, `/media/*`, `/webhook` and `/messenger/webhook` to the backend and everything else to `index.html` (so hash routes work on refresh).
 - **HTTPS:** set `SITE_ADDRESS` to a domain and Caddy gets and renews the certificate; the `caddy` volume keeps it across restarts (Let's Encrypt rate-limits re-issuing).
-- **Ollama on Windows with Docker in WSL2:** [`docker-compose.ollama.yml`](docker-compose.ollama.yml) lets the backend reach it.
 
 #### `backup.py`: backups
 

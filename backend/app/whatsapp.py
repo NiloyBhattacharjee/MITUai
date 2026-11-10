@@ -37,10 +37,6 @@ def send_text(to: str, text: str):
     return _post_message({"to": to, "type": "text", "text": {"body": text}})
 
 
-def send_audio(to: str, media_id: str):
-    return _post_message({"to": to, "type": "audio", "audio": {"id": media_id}})
-
-
 def send_image(to: str, media_id: str, caption: str):
     return _post_message({"to": to, "type": "image", "image": {"id": media_id, "caption": caption}})
 
@@ -61,7 +57,7 @@ def download_media(media_id: str) -> tuple[bytes, str]:
     return r.content, info.get("mime_type", "audio/ogg")
 
 
-def upload_media(data: bytes, mime: str = "audio/ogg") -> str:
+def upload_media(data: bytes, mime: str) -> str:
     r = http.post(_url(f"{tenancy.shop().whatsapp_phone_number_id}/media"), headers=_auth(),
                   data={"messaging_product": "whatsapp", "type": mime}, files={"file": (f"upload.{mime.split('/')[1]}", data, mime)})
     r.raise_for_status()

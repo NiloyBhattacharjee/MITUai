@@ -3,7 +3,7 @@ from datetime import timedelta
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from app import notify, pipeline
+from app import pipeline
 from app.db import Approval, Booking, Conversation, Message, Order, now
 from app.main import app
 from app.tools import Ctx, create_order, request_approval
@@ -21,9 +21,7 @@ def last_text(db, conv_id="sim-1"):
     return db.scalars(select(Message.text).where(Message.conversation_id == conv_id).order_by(Message.id)).all()[-1]
 
 
-def test_refund_request_waits_for_staff_and_the_customer_hears_back(db, monkeypatch):
-    emails = []
-    monkeypatch.setattr(notify, "email_owner", lambda subject, body: emails.append(subject))
+def test_refund_request_waits_for_staff_and_the_customer_hears_back(db):
     c = chat(db)
     o = Order(conversation_id="sim-1", customer_name="A", phone="0412345678", fulfilment="pickup", ready_at=now(), items=[],
               subtotal=500, fee=0, total=500, payment_method="in_person", status="completed")
@@ -31,7 +29,7 @@ def test_refund_request_waits_for_staff_and_the_customer_hears_back(db, monkeypa
     db.commit()
     assert "No order" in request_approval(chat(db, "sim-2"), "refund", "Refund please", order_id=o.id)["error"]  # not their order
     asked = request_approval(c, "refund", "Refund for order #1: flat white was cold", order_id=o.id)
-    assert asked["status"] == "WAITING_FOR_STAFF" and emails == ["Approval needed: refund"]
+    assert asked["status"] == "WAITING_FOR_STAFF"
     assert request_approval(c, "refund", "Refund again?", order_id=o.id)["status"] == "ALREADY_WAITING"
     assert db.get(Conversation, "sim-1").bot_enabled  # unlike a handoff, the assistant keeps chatting
 

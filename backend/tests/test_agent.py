@@ -168,18 +168,6 @@ def test_handoff_stops_bot(db, fake_llm):
     assert len(fake_llm.calls) == 1
 
 
-def test_owner_emailed_once_per_handoff(db, monkeypatch):
-    from app import notify
-    sent = []
-    monkeypatch.setattr(notify, "email_owner", lambda subject, body: sent.append(subject))
-    conv = Conversation(id="sim-5", channel="sim", phone="5")
-    db.add(conv)
-    db.commit()
-    notify.flag_for_human(db, conv, "angry customer")
-    notify.flag_for_human(db, conv, "Bot error, please check this chat")  # still waiting on a human: no second email
-    assert sent == ["Mitu needs a human: 5"] and conv.handoff_reason == "Bot error, please check this chat"
-
-
 def test_menu_photo_goes_out_on_whatsapp(db, fake_llm, graph):
     import json
     from app.main import message_dict

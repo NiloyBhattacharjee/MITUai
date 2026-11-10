@@ -595,8 +595,6 @@ def request_approval(ctx: Ctx, kind: str, summary: str, order_id: int | None = N
                  details=details)
     ctx.db.add(a)
     ctx.db.commit()
-    notify.email_owner(f"Approval needed: {kind.replace('_', ' ')}",
-                       f"{a.summary}\n\nApprove or decline it on the dashboard's Approvals page. The customer is told your answer.")
     return {"status": "WAITING_FOR_STAFF", "approval_id": a.id,
             "instruction": "Tell the customer the team will check and reply here soon. Don't promise the outcome."}
 

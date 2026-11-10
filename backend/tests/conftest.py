@@ -5,8 +5,7 @@ from pathlib import Path
 
 _tmp = Path(tempfile.mkdtemp())
 os.environ.update(DATABASE_URL=f"sqlite:///{_tmp / 'test.db'}", MEDIA_DIR=str(_tmp / "media"),
-                  WHATSAPP_APP_SECRET="test-secret", WHATSAPP_VERIFY_TOKEN="verify-me", VOICE_REPLY="false", ALERT_EMAIL="",
-                  PUBLIC_URL="https://shop.test")
+                  WHATSAPP_APP_SECRET="test-secret", WHATSAPP_VERIFY_TOKEN="verify-me", PUBLIC_URL="https://shop.test")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import hashlib  # noqa: E402

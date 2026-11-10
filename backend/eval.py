@@ -5,8 +5,7 @@
     python eval.py salon            the salon's cases (shop: the shop's); the rest run on the café
 
 It uses LLM_PROVIDER and the keys from .env, so it costs real money: roughly $1-3 for all cases on Sonnet, about
-double on Opus, free on Ollama. Each case runs on its own throwaway database (your shop.db is never touched) and no
-emails are sent. The business's clock is set to 10:00 whenever you run it. Checks are deterministic:
+double on Opus, free on Ollama. Each case runs on its own throwaway database (your shop.db is never touched). The business's clock is set to 10:00 whenever you run it. Checks are deterministic:
 which tools were called, what's in the database, regexes on the reply. Exits 1 if any case fails.
 """
 import os
@@ -17,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 _tmp = Path(tempfile.mkdtemp(prefix="mitu-eval-"))  # before importing app: config reads these at import
-os.environ.update(DATABASE_URL=f"sqlite:///{_tmp / 'eval.db'}", MEDIA_DIR=str(_tmp / "media"), ALERT_EMAIL="")
+os.environ.update(DATABASE_URL=f"sqlite:///{_tmp / 'eval.db'}", MEDIA_DIR=str(_tmp / "media"))
 
 import json  # noqa: E402
 import re  # noqa: E402
@@ -144,7 +143,7 @@ def main(words: list[str]):
     café_at_ten()
     cases = load_cases(words)
     print(f"Running {len(cases)} cases on {LLM_PROVIDER}, café time {hours.local_now():%a %H:%M}\n")
-    failed, total, results = 0, 0.0, []
+    failed, total = 0, 0.0
     for case in cases:
         t = time.perf_counter()
         try:
@@ -153,14 +152,11 @@ def main(words: list[str]):
             problems, transcript, cost = [f"crashed: {e!r}"], [], 0.0
         seconds = time.perf_counter() - t
         total += cost
-        results.append({"name": case["name"], "passed": not problems, "cost_usd": cost, "seconds": seconds, "turns": len(case["turns"])})
         print(f"{'PASS' if not problems else 'FAIL'}  {case['name']}  (${cost:.3f}, {seconds:.1f}s)", flush=True)
         if problems:
             failed += 1
             print("\n".join([*(f"  ! {p}" for p in problems), *transcript]) + "\n", flush=True)
     print(f"\n{len(cases) - failed}/{len(cases)} passed, ${total:.2f} total")
-    if out := os.environ.get("EVAL_RESULTS"):  # compare_models.py reads this
-        Path(out).write_text(json.dumps(results), encoding="utf-8")
     sys.exit(1 if failed else 0)
 
 

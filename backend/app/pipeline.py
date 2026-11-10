@@ -9,7 +9,7 @@ from pathlib import Path
 from sqlalchemy import func, select, update
 
 from . import agent, messenger, notify, tenancy, voice, whatsapp
-from .config import MEDIA_DIR, PUBLIC_URL, STT_MIN_CONFIDENCE, VOICE_MAX_SECONDS, VOICE_REPLY, money
+from .config import MEDIA_DIR, PUBLIC_URL, STT_MIN_CONFIDENCE, VOICE_MAX_SECONDS, money
 from .tenancy import cfg
 from .db import Conversation, Message, SeenWhatsAppMessage, Session, Shop, now
 
@@ -17,21 +17,18 @@ log = logging.getLogger(__name__)
 WHATSAPP_WINDOW = timedelta(hours=24)  # Meta's rule on WhatsApp, Messenger and Instagram: after it, only templates/tags
 
 
-def deliver(channel: str, phone: str, text: str, ogg: bytes | None = None, image: Path | None = None):
+def deliver(channel: str, phone: str, text: str, image: Path | None = None):
     if channel == "whatsapp":
         if image:  # text becomes the photo's caption
             whatsapp.send_image(phone, whatsapp.upload_media(image.read_bytes(), mimetypes.guess_type(image.name)[0]), text)
         else:
             whatsapp.send_text(phone, text)
-        if ogg:
-            whatsapp.send_audio(phone, whatsapp.upload_media(ogg))
     elif channel in messenger.CHANNELS.values():
         if image:  # no captions on Messenger/Instagram images: photo first, then the text
             if not PUBLIC_URL:
                 raise RuntimeError("PUBLIC_URL is not set, so Messenger/Instagram can't fetch the photo")
             messenger.send_image(phone, f"{PUBLIC_URL}/media/{image.relative_to(MEDIA_DIR).as_posix()}")
         messenger.send_text(phone, text)
-        # ponytail: voice replies (ogg) are WhatsApp-only; Messenger/Instagram get the text. Add when VOICE_REPLY is used there.
     # simulator: nothing to push, the page polls the DB
 
 
@@ -139,20 +136,7 @@ def handle_voice(conv_id: str, channel: str, phone: str, audio: bytes, ext: str)
     lap("agent")
     if not reply:
         return
-    ogg = None
-    if VOICE_REPLY:
-        try:
-            audio_out, out_ext = voice.get_tts().synthesize(reply.text)
-            ogg = voice.to_ogg_opus(audio_out, out_ext)
-            out_name = f"{uuid.uuid4().hex}.ogg"
-            (MEDIA_DIR / out_name).write_bytes(ogg)
-            with Session() as db:
-                db.merge(reply).audio_path = out_name
-                db.commit()
-            lap("tts")
-        except Exception:
-            log.exception("voice reply failed; sending text only")
-    deliver(channel, phone, reply.text, ogg)
+    deliver(channel, phone, reply.text)
     lap("send")
     log.info("voice note %s timings (s): %s", conv_id, timings)
 

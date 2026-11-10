@@ -26,7 +26,7 @@ DATABASE_URL = env("DATABASE_URL", f"sqlite:///{ROOT / 'backend' / 'shop.db'}")
 MEDIA_DIR = Path(env("MEDIA_DIR", str(ROOT / "backend" / "media")))
 MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 
-LLM_PROVIDER = env("LLM_PROVIDER", "ollama")  # ollama | anthropic | bedrock
+LLM_PROVIDER = env("LLM_PROVIDER", "ollama")  # ollama | anthropic
 
 # One Meta app for every business: it signs and verifies the webhooks. Each business's own WhatsApp number, Page and tokens
 # live on its row in the shops table (manage.py connect).
@@ -46,7 +46,5 @@ PAGE_ACCESS_TOKEN = env("PAGE_ACCESS_TOKEN")
 PAGE_ID = env("PAGE_ID")
 INSTAGRAM_ID = env("INSTAGRAM_ID")
 
-STT_PROVIDER = env("STT_PROVIDER", "openai")  # openai | aws
 STT_MIN_CONFIDENCE = float(env("STT_MIN_CONFIDENCE", "0.5"))
 VOICE_MAX_SECONDS = 120
-VOICE_REPLY = env("VOICE_REPLY", "false").lower() == "true"

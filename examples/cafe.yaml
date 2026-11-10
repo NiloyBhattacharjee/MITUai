@@ -4,7 +4,6 @@
 name: Little Fern Café
 kind: a café
 agent_name: Mitu
-# alert_email: owner@example.com   # who gets "needs a person" and approval emails (default: ALERT_EMAIL in .env)
 timezone: Australia/Sydney
 currency: "$"
 location: "42 King Street, Newtown NSW 2042. Street parking on King St, Newtown station is a 5-minute walk."
