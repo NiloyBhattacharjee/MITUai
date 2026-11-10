@@ -12,6 +12,7 @@ which tools were called, what's in the database, regexes on the reply. Exits 1 i
 import os
 import sys
 import tempfile
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -143,18 +144,23 @@ def main(words: list[str]):
     café_at_ten()
     cases = load_cases(words)
     print(f"Running {len(cases)} cases on {LLM_PROVIDER}, café time {hours.local_now():%a %H:%M}\n")
-    failed, total = 0, 0.0
+    failed, total, results = 0, 0.0, []
     for case in cases:
+        t = time.perf_counter()
         try:
             problems, transcript, cost = run_case(case)
         except Exception as e:  # one broken case shouldn't hide the rest
             problems, transcript, cost = [f"crashed: {e!r}"], [], 0.0
+        seconds = time.perf_counter() - t
         total += cost
-        print(f"{'PASS' if not problems else 'FAIL'}  {case['name']}  (${cost:.3f})", flush=True)
+        results.append({"name": case["name"], "passed": not problems, "cost_usd": cost, "seconds": seconds, "turns": len(case["turns"])})
+        print(f"{'PASS' if not problems else 'FAIL'}  {case['name']}  (${cost:.3f}, {seconds:.1f}s)", flush=True)
         if problems:
             failed += 1
             print("\n".join([*(f"  ! {p}" for p in problems), *transcript]) + "\n", flush=True)
     print(f"\n{len(cases) - failed}/{len(cases)} passed, ${total:.2f} total")
+    if out := os.environ.get("EVAL_RESULTS"):  # compare_models.py reads this
+        Path(out).write_text(json.dumps(results), encoding="utf-8")
     sys.exit(1 if failed else 0)
 
 
