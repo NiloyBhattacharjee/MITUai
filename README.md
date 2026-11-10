@@ -173,11 +173,11 @@ On items, `stock: 12` makes the assistant count them down (it never sells more t
 The marketing site can let visitors chat with one business, typed or by voice note, without signing in: `POST /api/demo/message`, `POST /api/demo/voice` and `GET /api/demo/{visitor}/messages`, where `visitor` is a random ID the browser keeps. It's off until `DEMO_SHOP` is set. Because strangers are spending your LLM money, each browser and each IP gets `DEMO_MESSAGES_PER_VISITOR` messages (default 20) and everyone together gets `DEMO_MESSAGES_PER_DAY` (default 300); after that the demo answers 429. The demo business never emails anyone, so a visitor asking for a person doesn't reach your inbox. Its chats, orders and bookings show in its own dashboard like any other business's.
 
 ```bash
-.venv/bin/python manage.py add-shop demo ../business.yaml --owner-password 'a-long-password'
+.venv/bin/python manage.py add-shop demo ../examples/demo-sydney.yaml --owner-password 'a-long-password'
 # then in .env: DEMO_SHOP=demo and DEMO_ORIGINS=https://your-website.example
 ```
 
-Give the demo business no `stock` counts (or reset it now and then), or visitors will sell it out.
+`examples/demo-sydney.yaml` is the shop from `business.yaml` in Sydney and Australian dollars, with no `stock` counts so visitors can't sell it out.
 
 ## 5. CI/CD and deploying
 

@@ -94,3 +94,15 @@ def test_voice_notes_count_against_the_same_limits(db, fake_llm, demo, monkeypat
         assert r.status_code == 200
     assert heard == [(f"little-fern:demo-{VISITOR}", "webm")] * 3
     assert say("hi").status_code == 429
+
+
+def test_the_demo_business_file_is_a_sydney_shop_that_cannot_sell_out(db):
+    from pathlib import Path
+    from app import tenancy, tools
+    from app.db import MenuItem
+    from tests.conftest import add_cafe
+    shop = add_cafe(db, "demo", {"Owner": "demo-pw"}, Path(__file__).resolve().parents[2] / "examples" / "demo-sydney.yaml")
+    with tenancy.scope(shop):
+        assert tools.sells() and not tools.tables()
+        assert shop.config["currency"] == "$" and shop.config["timezone"] == "Australia/Sydney"
+        assert all(i.stock is None for i in db.query(MenuItem))  # visitors can't sell the demo out
