@@ -99,7 +99,7 @@ export function Chats() {
 
   return (
     <>
-      <PageHeader title="Conversations" sub="Every WhatsApp, Messenger and Instagram chat. Step in when the assistant needs you." />
+      <PageHeader title="Conversations" />
       <div className="card overflow-hidden grid md:grid-cols-[340px_1fr] h-[calc(100dvh-15rem)] md:h-[calc(100dvh-13.5rem)] min-h-[480px]">
         <div className={cx('min-h-0 flex-col md:border-r border-line', conv ? 'hidden md:flex' : 'flex')}>
           <div className="p-3 border-b border-line">
@@ -231,7 +231,7 @@ export function Orders() {
   const shown = filter === 'all' ? all : all.filter((o) => o.status === filter)
   return (
     <>
-      <PageHeader title="Orders" sub="Every order the assistant took. Customers are told when it's being made and when it's ready.">
+      <PageHeader title="Orders">
         <button onClick={exportCsv} className="btn btn-secondary"><Icon name="download" /> Export CSV</button>
       </PageHeader>
       <div className="mb-4">
@@ -334,7 +334,7 @@ export function Kitchen({ title = 'Kitchen' }) {
 
   return (
     <>
-      <PageHeader title={title} sub="Orders to get ready, soonest first. Moving an order on tells the customer.">
+      <PageHeader title={title}>
         <button onClick={soundOn} aria-pressed={sound} className={cx('btn', sound ? 'btn-secondary' : 'btn-ghost')}>
           <Icon name="bell" /> {sound ? 'Sound on' : 'Sound off'}
         </button>
@@ -357,17 +357,17 @@ export function Kitchen({ title = 'Kitchen' }) {
                 {col.map((o) => (
                   <article key={o.id} className="enter card p-4">
                     <header className="flex items-baseline justify-between gap-3">
-                      <span className="font-semibold tabular-nums">#{o.id} · {o.fulfilment_label}</span>
-                      <span className="text-xs"><Due iso={o.ready_at} /></span>
+                      <span className="font-semibold truncate"><span className="tabular-nums text-faint font-normal">#{o.id}</span> {o.customer_name}</span>
+                      <span className="text-xs whitespace-nowrap"><Due iso={o.ready_at} /></span>
                     </header>
-                    <div className="mt-1 text-sm text-muted">{o.customer_name} · {o.phone}</div>
+                    <div className="mt-1 text-sm text-muted">{o.fulfilment_label} · {o.phone}</div>
                     {o.address && <div className="text-xs text-faint mt-0.5">{o.address}</div>}
                     <ul className="mt-3 space-y-1 text-[15px]">{o.items.map((line, i) => <li key={i}>{line}</li>)}</ul>
                     {o.notes && <p className="mt-2 text-sm text-warn">Note: {o.notes}</p>}
                     <footer className="mt-4 flex items-center justify-between gap-2">
                       <span className="text-sm tabular-nums text-muted">{money(o.total)}</span>
                       <div className="flex gap-2">
-                        {o.status === 'new' && <button onClick={() => confirm(`Cancel order #${o.id}? The customer is told.`) && move(o, 'cancelled')} className="btn btn-ghost text-danger!">Cancel</button>}
+                        {o.status === 'new' && <button onClick={() => confirm(`Cancel order #${o.id}? The customer is told.`) && move(o, 'cancelled')} className="btn btn-ghost hover:text-danger!">Cancel</button>}
                         <button onClick={() => move(o, NEXT[o.status][0])} className="btn btn-primary">{NEXT[o.status][1]}</button>
                       </div>
                     </footer>
@@ -432,10 +432,11 @@ export function Menu({ title = 'Menu' }) {
   const shown = (items || []).filter((i) => !needle || [i.name, i.category, i.id].some((t) => t.toLowerCase().includes(needle)))
   const current = items?.find((i) => i.id === open)
   const close = () => setOpen(null)
+  const photos = items?.some((i) => i.photo_url)  // without any, the cards are text only: no rows of empty boxes
 
   return (
     <>
-      <PageHeader title={title} sub="What the assistant offers: prices, options, stock, dietary info and photos. Mark items sold out.">
+      <PageHeader title={title}>
         <button onClick={() => setOpen('new')} className="btn btn-primary"><Icon name="plus" /> Add item</button>
       </PageHeader>
 
@@ -449,11 +450,13 @@ export function Menu({ title = 'Menu' }) {
         {shown.map((i) => (
           <div key={i.id} className={cx('card overflow-hidden flex flex-col transition', !i.available && 'opacity-70')}>
             <button onClick={() => setOpen(i.id)} className="text-left group flex-1">
-              <div className="w-full aspect-4/3 bg-subtle grid place-items-center overflow-hidden">
-                {i.photo_url
-                  ? <img src={i.photo_url} alt="" className="w-full h-full object-cover transition duration-300 group-hover:scale-[1.03]" />
-                  : <Icon name="image" className="w-6 h-6 text-faint" />}
-              </div>
+              {photos && (
+                <div className="w-full aspect-4/3 bg-subtle grid place-items-center overflow-hidden">
+                  {i.photo_url
+                    ? <img src={i.photo_url} alt="" className="w-full h-full object-cover transition duration-300 group-hover:scale-[1.03]" />
+                    : <Icon name="image" className="w-6 h-6 text-faint" />}
+                </div>
+              )}
               <div className="px-4 pt-4">
                 <div className="font-medium leading-snug line-clamp-2">{i.name}</div>
                 <div className="text-xs text-faint truncate mt-1 capitalize">{i.category}{i.stock != null && ` · ${i.stock} left`}{i.dietary.length > 0 && ` · ${i.dietary.join(', ')}`}</div>

@@ -48,3 +48,9 @@ INSTAGRAM_ID = env("INSTAGRAM_ID")
 
 STT_MIN_CONFIDENCE = float(env("STT_MIN_CONFIDENCE", "0.5"))
 VOICE_MAX_SECONDS = 120
+
+# Public demo: anyone can chat with this one business from the website, without signing in. Off when empty.
+DEMO_SHOP = env("DEMO_SHOP")
+DEMO_ORIGINS = [o.strip().rstrip("/") for o in env("DEMO_ORIGINS").split(",") if o.strip()]  # the website(s) allowed to call it
+DEMO_PER_VISITOR = int(env("DEMO_MESSAGES_PER_VISITOR", "20"))  # per browser and per IP
+DEMO_PER_DAY = int(env("DEMO_MESSAGES_PER_DAY", "300"))  # for everyone together: the cap on the demo's AI bill

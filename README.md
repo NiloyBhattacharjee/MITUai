@@ -156,6 +156,17 @@ On items, `stock: 12` makes the assistant count them down (it never sells more t
 .venv/bin/python manage.py add-shop little-fern ../examples/cafe.yaml --owner-password 'a-long-password'
 ```
 
+### A public demo for the website
+
+The marketing site can let visitors chat with one business, typed or by voice note, without signing in: `POST /api/demo/message`, `POST /api/demo/voice` and `GET /api/demo/{visitor}/messages`, where `visitor` is a random ID the browser keeps. It's off until `DEMO_SHOP` is set. Because strangers are spending your LLM money, each browser and each IP gets `DEMO_MESSAGES_PER_VISITOR` messages (default 20) and everyone together gets `DEMO_MESSAGES_PER_DAY` (default 300); after that the demo answers 429. The demo business never emails anyone, so a visitor asking for a person doesn't reach your inbox. Its chats, orders and bookings show in its own dashboard like any other business's.
+
+```bash
+.venv/bin/python manage.py add-shop demo ../examples/demo-sydney.yaml --owner-password 'a-long-password'
+# then in .env: DEMO_SHOP=demo and DEMO_ORIGINS=https://your-website.example
+```
+
+`examples/demo-sydney.yaml` is the shop from `business.yaml` in Sydney and Australian dollars, with no `stock` counts so visitors can't sell it out.
+
 ## 5. CI/CD and deploying
 
 `.github/workflows/ci-cd.yml` runs on every push and pull request:
@@ -185,6 +196,8 @@ Backups land in `~/mituai/backups` on the server. **Copy them off the server** (
 The flow: WhatsApp `audio` message → `GET /{media_id}` → download with the token → save the original (for the dashboard player) → ffmpeg to 16 kHz mono WAV → reject anything over 2 minutes → speech-to-text → if the transcript is empty or confidence is below `STT_MIN_CONFIDENCE`, reply "please repeat or type it" (never guess) → otherwise the same `agent.respond()` as typed text. The transcript is stored marked as a voice note, and each step's time is logged.
 
 Speech-to-text is OpenAI `whisper-1` (`OPENAI_API_KEY`), prompted with the menu's item names so it spells them right. Confidence comes from segment log-probabilities. Replies are always text.
+
+**Languages.** The assistant replies in the language the customer writes or speaks in; there's nothing to switch on. Whisper detects the language of a voice note itself, and is reliable in about 57 languages (Hindi, Urdu, Nepali, Tamil, Vietnamese, Indonesian, Tagalog, Thai, Mandarin, Arabic, …) and weak on Bengali, Punjabi, Gujarati, Telugu, Sinhala, Burmese and Khmer. The fixed messages in the business file (handoff, "couldn't catch that voice note", order updates) are sent as written, so they're in whatever language you wrote them in.
 
 ## Decisions
 

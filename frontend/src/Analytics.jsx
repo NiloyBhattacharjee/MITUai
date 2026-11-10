@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { useLive } from './App.jsx'
-import { Card, PageHeader, Segmented, StatusBadge, cx, money, plural } from './ui.jsx'
+import { Card, PageHeader, Segmented, cx, money, plural } from './ui.jsx'
 
 const RANGES = [7, 30, 90]
 const shortDate = (iso) => new Date(iso + 'T00:00').toLocaleDateString([], { day: 'numeric', month: 'short' })
@@ -99,7 +99,7 @@ function BarList({ rows, sub }) {
   )
 }
 
-export default function Analytics() {
+export default function Analytics({ shop = {} }) {
   const [days, setDays] = useState(30)
   const [fresh] = useLive(`/api/analytics?days=${days}`, 15000)
   const last = useRef(null)
@@ -107,12 +107,11 @@ export default function Analytics() {
   const data = fresh ?? last.current  // keep the old range on screen (dimmed) while the new one loads
   const loading = !fresh
   const c = data?.current, p = data?.previous
-  const delta = (k) => data && <><Delta now={c[k]} before={p[k]} /><span className="ml-2 hidden sm:inline">vs previous {days} days</span></>
-  const totalOrders = data?.status.reduce((s, x) => s + x.count, 0)
+  const delta = (k) => data && <span title={`Compared with the previous ${days} days`}><Delta now={c[k]} before={p[k]} /></span>
 
   return (
     <>
-      <PageHeader title="Overview" sub="Orders your assistant took on WhatsApp, Messenger and Instagram.">
+      <PageHeader title="Overview">
         <Segmented label="Date range" value={days} onChange={setDays} options={RANGES.map((r) => ({ value: r, label: `${r} days` }))} />
       </PageHeader>
 
@@ -133,24 +132,12 @@ export default function Analytics() {
         </Card>
 
         {data && (
-          <div className="grid gap-6 lg:grid-cols-3">
+          <div className="grid gap-6 lg:grid-cols-2">
             <Card title="Top items">
               <BarList rows={data.top_items} sub={(r) => `${r.count} sold`} />
             </Card>
             <Card title="Pickup and delivery">
               <BarList rows={data.fulfilment} sub={(r) => plural(r.count, 'order')} />
-            </Card>
-            <Card title="Order status" action={<a href="#/orders" className="text-sm text-muted hover:text-ink">View all →</a>}>
-              <ul className="space-y-3">
-                {data.status.map((s) => (
-                  <li key={s.status} className="flex items-center justify-between gap-3">
-                    <StatusBadge status={s.status} />
-                    <span className="text-sm tabular-nums">
-                      {s.count}<span className="text-faint ml-2 inline-block w-9 text-right">{totalOrders ? Math.round((100 * s.count) / totalOrders) : 0}%</span>
-                    </span>
-                  </li>
-                ))}
-              </ul>
             </Card>
           </div>
         )}

@@ -9,13 +9,14 @@ from time import monotonic, sleep
 from typing import Annotated
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Form, Header, HTTPException, Query, Request, Response, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from sqlalchemy import func, select
 
-from . import agent, auth, hours, messenger, options, pipeline, tenancy, tools, whatsapp
+from . import agent, auth, config, hours, messenger, options, pipeline, tenancy, tools, whatsapp
 from .config import MEDIA_DIR, cents
-from .db import ORDER_STATUSES, Conversation, LlmUsage, MenuItem, Message, Order, Session, Setting, Shop, ToolCall, init_db
+from .db import ORDER_STATUSES, Conversation, LlmUsage, MenuItem, Message, Order, Session, Setting, Shop, ToolCall, init_db, now
 from .tenancy import cfg
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -61,6 +62,8 @@ class SignedIn:
 
 app = FastAPI(title="Mitu", lifespan=lifespan)
 app.add_middleware(SignedIn)
+if config.DEMO_ORIGINS:  # the marketing site calls /api/demo from its own domain; no cookies, so nothing else is exposed
+    app.add_middleware(CORSMiddleware, allow_origins=config.DEMO_ORIGINS, allow_methods=["GET", "POST"], allow_headers=["Content-Type"])
 app.include_router(whatsapp.router)
 app.include_router(messenger.router)
 app.mount("/media", StaticFiles(directory=MEDIA_DIR), name="media")
@@ -146,14 +149,17 @@ def labels() -> dict:
 
 # --- simulator (signed in only: every message runs the paid LLM and can place real orders) ------
 
-def in_this_business(fn, *args):
-    """A background job that runs in the business the request came from."""
-    shop = tenancy.shop()
-
+def in_business(shop, fn, *args):
+    """A background job that runs in this business's scope."""
     def run():
         with tenancy.scope(shop):
             fn(*args)
     return run
+
+
+def in_this_business(fn, *args):
+    """A background job that runs in the business the request came from."""
+    return in_business(tenancy.shop(), fn, *args)
 
 
 def sim_id(phone: str) -> str:
@@ -197,6 +203,83 @@ def sim_messages(phone: str):
     with Session() as db:
         conv = db.get(Conversation, sim_id(phone))
         return {"messages": messages_of(db, sim_id(phone)), "bot_enabled": conv.bot_enabled if conv else True}
+
+
+# --- public demo (no sign-in: website visitors chat with the DEMO_SHOP business) --------------------------------
+# It runs the paid LLM for strangers, so it's off unless DEMO_SHOP is set, each browser and IP gets
+# DEMO_MESSAGES_PER_VISITOR messages, and everyone together DEMO_MESSAGES_PER_DAY.
+
+_demo_used: dict[str, int] = {}  # "visitor:<id>" / "ip:<ip>" / "day:<date>" -> messages
+# ponytail: in-memory, one process, so a restart resets the counts; move to the database if the demo gets abused.
+Visitor = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{8,40}$")]
+
+
+def demo_shop() -> Shop:
+    with Session() as db:
+        shop = db.get(Shop, config.DEMO_SHOP) if config.DEMO_SHOP else None
+    if shop is None:
+        raise HTTPException(404, "There's no demo here")
+    return shop
+
+
+def demo_spend(visitor: str, request: Request):
+    """Count one demo message, or refuse it if this visitor, their IP or the whole day has used theirs up."""
+    keys = {f"visitor:{visitor}": config.DEMO_PER_VISITOR, f"ip:{request.client.host if request.client else '?'}": config.DEMO_PER_VISITOR,
+            f"day:{now().date()}": config.DEMO_PER_DAY}
+    if any(_demo_used.get(k, 0) >= limit for k, limit in keys.items()):
+        raise HTTPException(429, "That's the end of the demo. Book a demo to see Mitu on your own products.")
+    for k in keys:
+        _demo_used[k] = _demo_used.get(k, 0) + 1
+
+
+def demo_conv(shop: Shop, visitor: str) -> tuple[str, str]:
+    return f"{shop.id}:demo-{visitor}", f"demo-{visitor}"
+
+
+class DemoMessage(BaseModel):
+    visitor: Visitor
+    text: str = Field(min_length=1, max_length=500)
+
+
+@app.get("/api/demo")
+def demo_info():
+    shop = demo_shop()
+    c = shop.config
+    return {"name": c["name"], "agent_name": c["agent_name"], "about": c.get("about", ""), "try_messages": c.get("try_messages", []),
+            "messages_per_visitor": config.DEMO_PER_VISITOR, "voice": bool(config.env("OPENAI_API_KEY"))}
+
+
+@app.post("/api/demo/message")
+def demo_message(body: DemoMessage, request: Request, background: BackgroundTasks):
+    shop = demo_shop()
+    demo_spend(body.visitor, request)
+    conv_id, phone = demo_conv(shop, body.visitor)
+    background.add_task(in_business(shop, pipeline.handle_text, conv_id, "sim", phone, body.text))
+    return {"ok": True}
+
+
+@app.post("/api/demo/voice")
+async def demo_voice(request: Request, background: BackgroundTasks, visitor: Visitor = Form(), file: UploadFile = None):
+    shop = demo_shop()
+    data = await file.read() if file else b""
+    if not data or len(data) > 5_000_000:
+        raise HTTPException(400, "empty or too large")
+    demo_spend(visitor, request)
+    ext = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/mpeg": "mp3"}.get(
+        (file.content_type or "").split(";")[0], "webm")
+    conv_id, phone = demo_conv(shop, visitor)
+    background.add_task(in_business(shop, pipeline.handle_voice, conv_id, "sim", phone, data, ext))
+    return {"ok": True}
+
+
+@app.get("/api/demo/{visitor}/messages")
+def demo_messages(visitor: Visitor):
+    shop = demo_shop()
+    conv_id, _ = demo_conv(shop, visitor)
+    with tenancy.scope(shop), Session() as db:
+        conv = db.get(Conversation, conv_id)
+        msgs = [{k: m[k] for k in ("role", "text", "is_voice", "created_at")} for m in messages_of(db, conv_id)]
+        return {"messages": msgs, "handed_off": bool(conv and (conv.needs_human or not conv.bot_enabled))}
 
 
 @app.get("/api/conversations", dependencies=[dash])
