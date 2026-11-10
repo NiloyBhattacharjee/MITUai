@@ -45,9 +45,9 @@ messages:
 # Example messages offered in the website demo and the dashboard's chat simulator.
 try_messages:
   - {topic: Price, text: "How much is the mustard kurti? Do you have it in M?"}
-  - {topic: Hindi, text: "क्या नीली कुर्ती L साइज़ में है?"}
+  - {topic: Bangla, text: "নীল কুর্তিটা কি L সাইজে আছে?"}
   - {topic: Shipping, text: "How much is shipping to Perth?"}
-  - {topic: Order, text: "I'll take the indigo kurti in L, delivered to Parramatta, paying by PayID"}
+  - {topic: Order, text: "I'll take the indigo kurti in L, delivered to Parramatta"}
 
 saved_replies:
   - "Thanks for your order! We'll confirm as soon as the PayID payment arrives."
