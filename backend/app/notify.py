@@ -4,6 +4,7 @@ import smtplib
 import threading
 from email.message import EmailMessage
 
+from . import config, tenancy
 from .config import env
 from .tenancy import cfg
 
@@ -22,6 +23,8 @@ def flag_for_human(db, conv, reason: str, stop_bot=False):
 
 
 def email_owner(subject: str, body: str):
+    if tenancy.shop_id() == config.DEMO_SHOP:  # the public demo: strangers on the website, nobody to email
+        return
     to, user = cfg().get("alert_email") or env("ALERT_EMAIL"), env("SMTP_USER")  # each business can have its own
     if not (to and user):
         return
