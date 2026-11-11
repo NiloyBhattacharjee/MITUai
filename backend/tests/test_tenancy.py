@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from app import tenancy
-from app.db import Conversation, MenuItem, Message, Order, Session, Shop, Staff, ToolCall, now
+from app.db import Booking, Conversation, MenuItem, Message, Order, Session, Shop, Staff, ToolCall, now
 from app.main import app
 from app.tools import find_item
 from conftest import add_cafe
@@ -57,10 +57,12 @@ def test_sums_and_counts_are_per_cafe_too(db, harbour):
     from app.db import LlmUsage
     with tenancy.scope(harbour):
         db.add(LlmUsage(conversation_id="harbour:sim-1", model="claude-sonnet-5-5", cost_usd=5.0))
+        db.add(Booking(customer_name="Harbour guest", phone="0412345678", party_size=2, at=now()))
         db.commit()
         assert db.scalar(select(func.sum(LlmUsage.cost_usd))) == 5.0
         assert db.scalar(select(func.count(Order.id))) == 1
     assert db.scalar(select(func.sum(LlmUsage.cost_usd))) is None
+    assert client.get("/api/bookings", headers=FERN).json() == []
     assert db.scalar(select(func.count(Order.id))) == 1
     assert client.get("/api/analytics?days=7", headers=FERN).json()["current"]["ai_cost_usd"] == 0
 

@@ -16,7 +16,7 @@ HISTORY_LIMIT = 30
 _locks = defaultdict(threading.Lock)  # one agent turn at a time per chat (customers send bursts)
 
 def system_prompt(first_message: bool) -> str:
-    """Built from what this business does (see tools.sells), so the assistant only offers what it can do."""
+    """Built from what this business does (see tools.sells and tools.tables), so the assistant only offers what it can do."""
     b = cfg()
     kind, today_only = b.get("kind", "a business"), not tools.days_ahead()
     intro = (f"This is the customer's first message. Start your reply by introducing yourself as {b['agent_name']}, "
@@ -24,6 +24,8 @@ def system_prompt(first_message: bool) -> str:
     jobs = ["answer questions"]
     if tools.sells():
         jobs.append("take pickup and delivery orders" + (" for today" if today_only else ""))
+    if tools.tables():
+        jobs.append("book tables")
     parts = [f"""You are {b['agent_name']}, the AI assistant of {b['name']}, {kind}. You chat with customers on WhatsApp, Facebook Messenger and Instagram: you {', '.join(jobs[:-1]) + ' and ' + jobs[-1] if len(jobs) > 1 else jobs[0]}.
 
 Style: warm, short chat replies, usually 1-3 sentences, in the language the customer writes in. Plain text, no markdown, no headings. Lists only for items or an order summary.
@@ -43,6 +45,11 @@ Time: each customer message starts with the local date and time it was sent, lik
 3. Call create_order with confirmed=false. Show the returned summary with the total and the ready time, and ask them to confirm.
 4. Only after the customer clearly says yes in a later message, call create_order with confirmed=true and give them the order number and ready time. If they change something, quote again with confirmed=false.
 Never say an order is placed unless create_order returned status PLACED.""")
+    if tools.tables():
+        parts.append("Bookings: get the date, time, party size, name and phone (call saved_details first). Use check_availability, and if "
+                     "that time is full offer the other times it suggests. Repeat the booking back (weekday, date, time, party size, name) "
+                     "and call book_table only after they agree. Never say a table is booked unless book_table returned BOOKED. For a group "
+                     "bigger than we book, get the details and call escalate_to_human.")
     parts.append("Photos: a customer message marked [photo] comes with their image. If it shows something we might sell or do (often a screenshot of one of our posts), search for it and only say we have it if the search finds a match.")
     parts.append("Handoff: call escalate_to_human if the customer asks for a person, is upset or angry, asks for a refund, remake, discount or another exception (never promise or refuse one yourself), has a serious allergy question, wants a large or custom order or an event, or asks anything else you can't do with these tools. Then tell them briefly a team member will reply here soon.")
     return "\n\n".join(parts)

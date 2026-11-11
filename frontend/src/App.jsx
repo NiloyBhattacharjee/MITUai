@@ -1,6 +1,6 @@
 import { cloneElement, useEffect, useState } from 'react'
 import Simulator from './Simulator.jsx'
-import { Chats, Kitchen, Menu, Orders } from './Dashboard.jsx'
+import { Bookings, Chats, Kitchen, Menu, Orders } from './Dashboard.jsx'
 import Analytics from './Analytics.jsx'
 import Landing from './Landing.jsx'
 import { Icon, cx, setCurrency } from './ui.jsx'
@@ -89,6 +89,7 @@ const PAGES = [
   // needs: whether this business uses the page; label: its name, unless /api/business gives another (Packing, Products)
   { id: 'kitchen', label: 'Kitchen', el: <Kitchen />, needs: (s) => s.orders !== false },
   { id: 'orders', label: 'Orders', el: <Orders />, needs: (s) => s.orders !== false },
+  { id: 'bookings', label: 'Bookings', el: <Bookings />, needs: (s) => s.tables },
   { id: 'chats', label: 'Conversations', short: 'Chats', el: <Chats /> },
   { id: 'menu', label: 'Menu', el: <Menu /> },
 ]

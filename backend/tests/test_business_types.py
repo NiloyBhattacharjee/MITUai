@@ -1,4 +1,5 @@
-"""The default shop (business.yaml) next to the café: it counts stock and takes orders for later days."""
+"""The other kinds of business next to the café: the default shop (business.yaml) that counts stock and takes orders for
+later days, and a Dhaka restaurant (examples/restaurant.yaml) that books tables."""
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -10,7 +11,8 @@ from sqlalchemy import select
 from app import agent, hours, tenancy
 from app.db import Conversation, Setting
 from app.main import app
-from app.tools import Ctx, cancel_order, create_order, find_item, specs, take_stock
+from app.tools import (Ctx, book_table, cancel_booking, cancel_order, check_availability, create_order, find_item, my_bookings,
+                       specs, take_stock)
 
 EXAMPLES = Path(__file__).resolve().parents[2] / "examples"
 client = TestClient(app)
@@ -19,6 +21,12 @@ client = TestClient(app)
 @pytest.fixture
 def shop(db):
     with tenancy.scope(add_cafe(db, "nakshi", {"Owner": "shop-pw"}, EXAMPLES.parent / "business.yaml")) as s:
+        yield s
+
+
+@pytest.fixture
+def restaurant(db):
+    with tenancy.scope(add_cafe(db, "kacchi", {"Owner": "kacchi-pw"}, EXAMPLES / "restaurant.yaml")) as s:
         yield s
 
 
@@ -70,6 +78,7 @@ def test_shop_takes_orders_for_later_days_inside_its_hours(db, shop, clock):
     too_far = clock.date() + timedelta(days=8)
     assert "up to 7 days ahead" in create_order(c, False, **order(too_far))["problems"][0]
     assert {s["name"] for s in specs()} >= {"create_order", "search_menu"}
+    assert "book_table" not in {s["name"] for s in specs()}  # a shop has no tables
 
 
 def test_prompt_only_describes_what_the_business_does(db, shop):
@@ -124,3 +133,43 @@ def test_paused_shop_asks_customers_to_try_later(db, shop, clock):
     db.commit()
     problem = create_order(ctx(db, "nakshi:sim-1"), False, **order(next_day(clock, friday=False)))["problems"][0]
     assert "paused" in problem and "try again later" in problem
+
+
+def test_restaurant_books_tables_inside_its_hours_and_seats(db, restaurant, clock):
+    c, tomorrow = ctx(db, "kacchi:sim-1"), str(clock.date() + timedelta(days=1))
+    assert check_availability(c, tomorrow, "20:00", 6)["available"]
+    assert "can't book" in check_availability(c, tomorrow, "16:30", 2)["problems"][0]  # between lunch and dinner
+    assert "passed" in check_availability(c, str(clock.date()), "08:00", 2)["problems"][0]
+    big = check_availability(c, tomorrow, "20:00", 20)
+    assert not big["available"] and "escalate_to_human" in big["instruction"]  # bigger than max_party goes to the team
+
+    booked = book_table(c, "Nusrat Jahan", "01712 345678", 6, tomorrow, "20:00", "birthday")
+    assert booked["status"] == "BOOKED" and booked["party_size"] == 6
+    assert book_table(c, "Nusrat Jahan", "01712345678", 6, tomorrow, "20:00")["status"] == "ALREADY_BOOKED"  # asked twice
+    for i in range(4):  # 6 + 4 x 12 = 54 of 60 seats
+        book_table(ctx(db, f"kacchi:sim-{i + 10}"), "Guest", "01700000000", 12, tomorrow, "20:00")
+    full = check_availability(c, tomorrow, "20:15", 8)
+    assert not full["available"] and full["other_times_that_day"] and "20:15" not in full["other_times_that_day"]
+
+    assert "error" in cancel_booking(ctx(db, "kacchi:sim-99"), booked["booking_id"])  # someone else's
+    assert my_bookings(c)["bookings"][0]["party_size"] == 6
+    assert cancel_booking(c, booked["booking_id"])["status"] == "CANCELLED"
+    assert {"book_table", "create_order"} <= {s["name"] for s in specs()}
+    assert "book tables" in agent.system_prompt(False)
+
+
+def test_staff_see_bookings_and_cancelling_tells_the_customer(db, restaurant, clock):
+    from app.db import Booking, Message
+    h = {"X-Session": "kacchi-pw"}
+    ctx(db, "kacchi:sim-b")
+    soon, later = hours.to_utc(clock + timedelta(hours=10)), hours.to_utc(clock + timedelta(days=20))
+    db.add_all([Booking(conversation_id="kacchi:sim-b", customer_name="Rafi", phone="01712345678", party_size=4, at=soon),
+                Booking(customer_name="Far", phone="01712345678", party_size=2, at=later)])
+    db.commit()
+    rows = client.get("/api/bookings?days=14", headers=h).json()
+    assert [b["customer_name"] for b in rows] == ["Rafi"]
+    assert client.get("/api/business", headers=h).json()["tables"] is True
+    assert client.patch(f"/api/bookings/{rows[0]['id']}", json={"status": "cancelled"}, headers=h).status_code == 200
+    last = db.scalars(select(Message.text).where(Message.conversation_id == "kacchi:sim-b")).all()[-1]
+    assert "table for 4" in last and "20:00" in last
+    assert client.patch(f"/api/bookings/{rows[0]['id']}", json={"status": "gone"}, headers=h).status_code == 400

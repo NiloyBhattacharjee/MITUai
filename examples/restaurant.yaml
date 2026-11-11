@@ -1,0 +1,69 @@
+# A restaurant in Dhaka: table bookings first, plus pickup and delivery orders. Customers write in Bangla or English.
+# Add it next to other businesses:
+#   cd backend && python manage.py add-shop kacchi-ghor ../examples/restaurant.yaml --owner-password PASSWORD
+name: Kacchi Ghor
+kind: a restaurant
+agent_name: Mitu
+timezone: Asia/Dhaka
+currency: "৳"
+voice_language: bn
+location: "House 12, Road 11, Gulshan 1, Dhaka 1212. Parking in front for 6 cars, more on Road 11."
+about: "Family restaurant for kacchi biryani, rezala and Bangladeshi home-style lunch and dinner. Dine in, pickup or delivery in Gulshan, Banani and Baridhara."
+labels: {kitchen: Kitchen, menu: Menu}
+
+hours:
+  mon: "12:00-16:00, 18:00-23:00"
+  tue: "12:00-16:00, 18:00-23:00"
+  wed: "12:00-16:00, 18:00-23:00"
+  thu: "12:00-16:00, 18:00-23:00"
+  fri: "13:30-16:00, 18:00-23:30"
+  sat: "12:00-16:00, 18:00-23:30"
+  sun: "12:00-16:00, 18:00-23:00"
+prep_minutes: 30
+quote_reminder_minutes: 10
+
+# Table bookings. Bookings within a sitting of each other share the seats; bigger groups than max_party go to the team.
+reservations:
+  capacity: 60
+  sitting_minutes: 90
+  max_party: 12
+  last_booking_before_close: 60  # minutes
+  days_ahead: 30
+
+fulfilment:
+  pickup: {label: Pickup, fee: 0, note: "Collect at the front desk, mention your name."}
+  delivery: {label: Delivery, fee: 80, needs_address: true, note: "Gulshan, Banani and Baridhara only. Allow 45-60 minutes."}
+
+payment_methods:
+  cod: {label: Cash on delivery, note: "Cash when you collect or to the rider."}
+  bkash: {label: bKash, note: "Send money to 01700-000000 and reply with the transaction ID."}
+
+allergen_note: "Our kitchen uses nuts, dairy, gluten and mustard oil, so we can't promise any dish is free of them."
+
+messages:
+  handoff: "No problem, someone from our team will reply here shortly."
+  unsupported_media: "Sorry, I can only read text, voice notes and photos (JPG/PNG) for now. Type your question, or ask for a person."
+  voice_unclear: "Sorry, I couldn't catch that voice note. Could you say it again or type it?"
+  voice_too_long: "That voice note is a bit long. Please send one under 2 minutes, or type it."
+  error: "Sorry, something went wrong on our side. Someone from our team will reply soon."
+  order_preparing: "We're cooking your order #{order_id} now."
+  order_ready_pickup: "Your order #{order_id} is ready at the front desk."
+  order_ready_delivery: "Your order #{order_id} is on its way."
+  order_cancelled: "Your order #{order_id} has been cancelled. Message us here if you have any questions."
+  booking_cancelled: "Your table for {party_size} on {when} has been cancelled. Message us here if you have any questions."
+  quote_reminder: "Just checking: would you like me to place your order ({total})? Reply yes to confirm, or tell me what to change."
+
+try_messages:
+  - {topic: Book a table, text: "শুক্রবার রাত ৮টায় ৬ জনের টেবিল হবে?"}
+  - {topic: Menu and price, text: "Kacchi half plate koto?"}
+  - {topic: Place an order, text: "2 full kacchi delivery to Banani, COD"}
+  - {topic: Opening hours, text: "Are you open for lunch on Friday?"}
+  - {topic: Human handoff, text: "I want to talk to a real person"}
+
+menu:
+  - {id: R01, name: Mutton Kacchi Biryani, category: biryani, price: 450, description: "Basmati rice and mutton slow-cooked together, with potato and an egg.",
+     options: ["Size*: Half, Full +350"], allergens: [dairy, nuts], aliases: [kacchi, kachchi, কাচ্চি]}
+  - {id: R02, name: Chicken Roast, category: mains, price: 280, description: "Quarter chicken in a sweet and spicy roast gravy.", allergens: [dairy, nuts], aliases: [roast, রোস্ট]}
+  - {id: R03, name: Beef Rezala, category: mains, price: 380, description: "Beef in a mild, milky white curry.", allergens: [dairy, nuts], aliases: [rezala, রেজালা]}
+  - {id: R04, name: Borhani, category: drinks, price: 90, description: "Spiced yoghurt drink.", allergens: [dairy], aliases: [বোরহানি]}
+  - {id: R05, name: Firni, category: dessert, price: 120, description: "Chilled rice pudding in a clay bowl.", allergens: [dairy, nuts], aliases: [phirni, ফিরনি]}

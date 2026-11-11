@@ -303,3 +303,32 @@
   turns:
     - say: How much is delivery inside Dhaka?
       reply: '\b70\b'
+
+# --- the restaurant (examples/restaurant.yaml) ------------------------------------------------
+# Kacchi Ghor, Dhaka. Lunch 12:00-16:00, dinner 18:00-23:00 (later on Fri/Sat). 60 seats, groups up to 12, last booking an
+# hour before closing.
+
+- name: "restaurant: books a table only after the customer agrees"
+  business: examples/restaurant.yaml
+  turns:
+    - say: "Table for 4 tomorrow at 8pm? Rafi Ahmed, 01712 345678"
+      calls: [check_availability]
+      no_calls: [book_table]
+    - say: "yes please"
+      calls: [book_table]
+      reply: 'book'
+
+- name: "restaurant: a group bigger than it books goes to a person"
+  business: examples/restaurant.yaml
+  turns:
+    - say: "We are 20 people for a birthday, can we get a table tomorrow at 8pm? Rafi, 01712 345678"
+      no_calls: [book_table]
+  then:
+    needs_human: true
+
+- name: "restaurant: understands a booking asked in Bangla"
+  business: examples/restaurant.yaml
+  turns:
+    - say: "কাল রাত ৮টায় ৪ জনের টেবিল হবে? নাম রাফি, 01712345678"
+      calls: [check_availability]
+      no_calls: [book_table]

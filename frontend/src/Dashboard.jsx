@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { api, toast, useLive } from './App.jsx'
 import { Bubble, time } from './Simulator.jsx'
-import { Drawer, Empty, Icon, PageHeader, STATUS_STYLE, Segmented, Skeleton, Switch, cx, money, statusLabel } from './ui.jsx'
+import { Drawer, Empty, Icon, PageHeader, STATUS_STYLE, Segmented, Skeleton, Switch, cx, money, plural, statusLabel } from './ui.jsx'
 
 const STATUSES = ['new', 'preparing', 'ready', 'completed', 'cancelled']
 const CHANNEL = {
@@ -565,5 +565,54 @@ function ItemForm({ item, categories, onSaved, onCancel }) {
         <button disabled={saving} className="btn btn-primary">{saving ? 'Saving…' : item ? 'Save changes' : 'Add item'}</button>
       </div>
     </form>
+  )
+}
+
+// --- table bookings ------------------------------------------------------------------------------
+
+const BOOKING_STATUSES = ['booked', 'arrived', 'no_show', 'cancelled']
+
+export function Bookings() {
+  const [rows, refresh, setRows] = useLive('/api/bookings?days=14', 10000)
+  const days = []
+  for (const b of rows || []) {
+    const key = new Date(b.at).toDateString()
+    if (days.at(-1)?.key !== key) days.push({ key, label: day(b.at), rows: [] })
+    days.at(-1).rows.push(b)
+  }
+  const today = new Date().toDateString()
+  return (
+    <>
+      <PageHeader title="Bookings" sub="Tables the assistant booked for the next two weeks. Cancelling tells the customer." />
+      {!rows && <Skeleton className="h-48 rounded-2xl!" />}
+      {rows?.length === 0 && <div className="card"><Empty icon="bookings" title="No bookings yet">Customers can book a table in any chat.</Empty></div>}
+      <div className="space-y-6">
+        {days.map((d) => {
+          const guests = d.rows.filter((b) => b.status !== 'cancelled').reduce((n, b) => n + b.party_size, 0)
+          return (
+            <section key={d.key} className="card overflow-hidden">
+              <header className="flex items-baseline justify-between gap-3 px-5 py-3 border-b border-line bg-subtle/40">
+                <h2 className="text-sm font-medium">{d.key === today ? `Today · ${d.label}` : d.label}</h2>
+                <span className="text-xs text-muted tabular-nums">{plural(guests, 'guest')}</span>
+              </header>
+              <ul>
+                {d.rows.map((b) => (
+                  <li key={b.id} className={cx('flex flex-wrap items-center gap-x-5 gap-y-2 px-5 py-3 border-b border-line last:border-0', b.status === 'cancelled' && 'opacity-50')}>
+                    <span className="w-20 font-semibold tabular-nums whitespace-nowrap">{clock(b.at)}</span>
+                    <span className="flex items-center gap-1.5 w-16 text-sm text-muted tabular-nums"><Icon name="users" className="w-4 h-4" />{b.party_size}</span>
+                    <div className="min-w-40 flex-1">
+                      <div className="text-sm font-medium">{b.customer_name}</div>
+                      <div className="text-xs text-muted tabular-nums">{b.phone}{b.notes && <span className="text-warn"> · {b.notes}</span>}</div>
+                    </div>
+                    <StatusSelect value={b.status} options={BOOKING_STATUSES} label={`Status of booking ${b.id}`}
+                      onChange={(s) => changeStatus('/api/bookings', 'booking', rows, setRows, refresh, b.id, s)} />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )
+        })}
+      </div>
+    </>
   )
 }
