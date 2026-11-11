@@ -7,6 +7,7 @@ agent_name: Mitu
 timezone: Asia/Dhaka
 currency: "৳"
 voice_language: bn
+voice_replies: true  # answer a voice note with a voice note too (see README, Voice replies)
 location: "House 12, Road 11, Gulshan 1, Dhaka 1212. Parking in front for 6 cars, more on Road 11."
 about: "Family restaurant for kacchi biryani, rezala and Bangladeshi home-style lunch and dinner. Dine in, pickup or delivery in Gulshan, Banani and Baridhara."
 labels: {kitchen: Kitchen, menu: Menu}
