@@ -195,7 +195,9 @@ Backups land in `~/mituai/backups` on the server. **Copy them off the server** (
 
 The flow: WhatsApp `audio` message → `GET /{media_id}` → download with the token → save the original (for the dashboard player) → ffmpeg to 16 kHz mono WAV → reject anything over 2 minutes → speech-to-text → if the transcript is empty or confidence is below `STT_MIN_CONFIDENCE`, reply "please repeat or type it" (never guess) → otherwise the same `agent.respond()` as typed text. The transcript is stored marked as a voice note, and each step's time is logged.
 
-Speech-to-text is OpenAI `gpt-4o-transcribe` (`OPENAI_API_KEY`; `OPENAI_STT_MODEL=whisper-1` for the older model), prompted with the menu's item names so it spells them right. Confidence is the average probability of the transcript's words (Whisper: of its segments). Replies are always text.
+Speech-to-text is OpenAI `gpt-4o-transcribe` (`OPENAI_API_KEY`; `OPENAI_STT_MODEL=whisper-1` for the older model), prompted with the menu's item names so it spells them right. Confidence is the average probability of the transcript's words (Whisper: of its segments).
+
+**Voice replies.** With `voice_replies: true` in a business file, a customer who sends a voice note gets the reply as a voice note too, followed by the same words as text (prices and order numbers are easier to read than to hear). It's OpenAI `gpt-4o-mini-tts` (`OPENAI_TTS_MODEL`, voice `OPENAI_TTS_VOICE`, default `coral`), asked for Ogg/Opus, the format WhatsApp plays as a voice message; the dashboard's chat and the simulator can play it. Typed messages always get text. WhatsApp and the simulator only for now: Messenger and Instagram get the text. If speech fails the text still goes out. The speech isn't counted in the AI cost on the Overview page. Listen to it in each language you turn it on for: Bangla speech is weaker than English.
 
 **Languages.** The assistant replies in the language the customer writes or speaks in; there's nothing to switch on. The speech model detects the language of a voice note itself. `gpt-4o-transcribe` is the default because it's much better than `whisper-1` outside the biggest languages, Bangla included (Whisper is weak on Bangla, Punjabi, Gujarati, Telugu, Sinhala, Burmese and Khmer). When nearly all of a business's customers speak one language, set `voice_language` in its business file to its ISO code (`bn` for Bangla, `hi`, `ms`, `tl`, …): the model then doesn't have to guess. Check a new language on real recordings before promising it, and tune `STT_MIN_CONFIDENCE` if good notes get a "please repeat". The fixed messages in the business file (handoff, "couldn't catch that voice note", order updates) are sent as written, so they're in whatever language you wrote them in.
 
@@ -895,6 +897,7 @@ The breakdowns below go from the middle out: the message path first, then the da
 
 [`backend/app/voice.py`](backend/app/voice.py)
 
+- **Text-to-speech:** `voice.speak(text) -> bytes` (Ogg/Opus), called by `pipeline.voice_reply` after the agent answers a voice note.
 - **Speech-to-text:** `OpenAISTT.transcribe(wav) -> Transcript(text, language, confidence)`: gpt-4o-transcribe (or Whisper), prompted with the menu's item names via `stt_hint` and the business's `voice_language` if set, confidence from token (Whisper: segment) log-probabilities. `get_stt()` builds it, and tests swap it for a fake.
 - **ffmpeg helpers:** `to_wav` (16 kHz mono for speech-to-text) and `wav_seconds`. Temp files rather than pipes, because browser recordings need seekable input.
 - **Change it when:** adding a speech provider (make `get_stt()` pick one) or spoken replies.

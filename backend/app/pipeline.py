@@ -17,8 +17,11 @@ log = logging.getLogger(__name__)
 WHATSAPP_WINDOW = timedelta(hours=24)  # Meta's rule on WhatsApp, Messenger and Instagram: after it, only templates/tags
 
 
-def deliver(channel: str, phone: str, text: str, image: Path | None = None):
+def deliver(channel: str, phone: str, text: str, image: Path | None = None, audio: Path | None = None):
+    """audio: a voice note of the same reply, sent before the text (WhatsApp only)."""
     if channel == "whatsapp":
+        if audio:
+            whatsapp.send_audio(phone, whatsapp.upload_media(audio.read_bytes(), "audio/ogg"))
         if image:  # text becomes the photo's caption
             whatsapp.send_image(phone, whatsapp.upload_media(image.read_bytes(), mimetypes.guess_type(image.name)[0]), text)
         else:
@@ -136,9 +139,29 @@ def handle_voice(conv_id: str, channel: str, phone: str, audio: bytes, ext: str)
     lap("agent")
     if not reply:
         return
-    deliver(channel, phone, reply.text)
+    spoken = voice_reply(reply, channel)
+    lap("speak")
+    deliver(channel, phone, reply.text, audio=spoken)
     lap("send")
     log.info("voice note %s timings (s): %s", conv_id, timings)
+
+
+def voice_reply(reply: Message, channel: str) -> Path | None:
+    """A voice note of the reply, for a business with voice_replies on, answering a voice note. Saved on the message so the
+    dashboard can play it. On any failure the customer still gets the text."""
+    # ponytail: WhatsApp and the simulator only; Messenger and Instagram would need the audio as a public URL in a format they play.
+    if not cfg().get("voice_replies") or channel not in ("whatsapp", "sim"):
+        return None
+    try:
+        fname = f"{uuid.uuid4().hex}.ogg"
+        (MEDIA_DIR / fname).write_bytes(voice.speak(reply.text))
+    except Exception:
+        log.exception("voice reply failed for message %s", reply.id)
+        return None
+    with Session() as db:
+        db.execute(update(Message).where(Message.id == reply.id).values(audio_path=fname))
+        db.commit()
+    return MEDIA_DIR / fname
 
 
 MIME_EXT = {"audio/ogg": "ogg", "audio/mpeg": "mp3", "audio/mp4": "m4a", "audio/aac": "aac", "audio/amr": "amr", "audio/webm": "webm",
