@@ -11,7 +11,7 @@ One install runs many businesses, each with its own products, settings, staff, c
   - **Conversations:** live chats with staff replies (with saved replies from `business.yaml`) and an AI on/off switch per chat. Under each customer message, "AI used …" shows the tools the AI called, what they returned and what that turn cost.
   - **Products** (Menu for the café): prices, options, stock, dietary info, photos, and a sold-out switch.
 - **Chat simulator** (`#/simulator`, signed-in staff only, since every message runs the paid LLM): a WhatsApp-style phone in the browser, with a hold-to-record mic and a photo button.
-- **Real chats:** WhatsApp through the Cloud API webhook; Messenger and Instagram through the Messenger Platform webhook.
+- **Real chats:** WhatsApp through the Cloud API webhook; Messenger and Instagram through the Messenger Platform webhook; SMS and phone calls through Twilio, so customers on any mobile phone (no app, no data) can text or call.
 
 Every channel runs the same code path: `pipeline.py` → `agent.respond()` → LLM with tools. [How it works](#how-it-works) has the architecture and data-flow diagrams and a breakdown of each component.
 
@@ -33,6 +33,7 @@ backend/
   app/pipeline.py      one entry point per message type (text / voice / photo / other), used by every channel
   app/whatsapp.py      WhatsApp webhook (verify, signature, dedupe) + Graph API client
   app/messenger.py     Messenger and Instagram webhook + Send API
+  app/twilio.py        SMS and phone calls (Twilio): webhooks, signature check, sending SMS, the call's spoken turns
   app/voice.py         speech-to-text (OpenAI gpt-4o-transcribe or Whisper), ffmpeg helpers
   app/main.py          FastAPI: dashboard + simulator API
   manage.py            add businesses and staff, connect their WhatsApp number and Facebook Page
@@ -397,6 +398,15 @@ They take the same path as WhatsApp from `pipeline` onwards; only the edges diff
 | Skipped | status updates | read receipts, deliveries and echoes of our own replies |
 | Sending a photo | upload, then send with a caption | Meta fetches it from `PUBLIC_URL`; photo first, then the text |
 
+### SMS and phone calls
+
+One Twilio account for the install (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`); each business gets its own Twilio number (`manage.py connect <id> --twilio-number +61...`, or `TWILIO_NUMBER` for the first business). On the number's settings in the Twilio console, point **A message comes in** at `https://<PUBLIC_URL>/twilio/sms` and **A call comes in** at `https://<PUBLIC_URL>/twilio/voice` (both HTTP POST). `PUBLIC_URL` must be the address Twilio calls, since it's part of the signature every webhook is checked against ([`twilio.py`](backend/app/twilio.py)).
+
+- **Texts and calls from one number share a chat** (`<business>:phone-<number>`), so a caller who's sent an order summary can reply "yes" by SMS. Anything Mitu or staff send later (status updates, reminders, staff replies) goes by SMS, with no 24-hour window. Photos go as a link, since MMS only works in the US and Canada.
+- **A call is a chat turn per sentence.** Twilio turns the caller's speech into text (`<Gather input="speech">`) and posts it to `/twilio/voice/turn`; `agent.respond()` runs as for any message, with one extra line in the prompt for calls (short spoken sentences, no lists); Twilio reads the reply aloud (`<Say>`) and listens again. The greeting is stored as the first assistant message. Silence, a handoff, or a chat staff have taken over ends the call, and staff call or text back.
+- **Business settings:** `call_language` (default `en-US`, for both what callers speak and the voice, e.g. `bn-IN`; check Twilio's speech-recognition and text-to-speech language lists), `call_voice` (optional, e.g. `Google.en-US-Neural2-F`), and `call_greeting` / `call_goodbye` under `messages`.
+- **Limit:** Twilio waits 15 seconds for each turn, so a slow model (or Ollama on a CPU) ends the call with Twilio's error message. Twilio doesn't sell Bangladeshi numbers; a shop in Bangladesh needs a number from another country, or a local SMS gateway (not built).
+
 ### Duplicate webhooks and crash recovery
 
 Meta retries a webhook it thinks failed, and a restart can cut a reply off halfway. Both are handled by one table, `seen_wa_messages`:
@@ -572,11 +582,11 @@ Each time staff move an order, `main.set_order_status` sends the customer the ma
 
 ### The 24-hour window
 
-Meta only allows free-form messages to a customer within 24 hours of their last message; after that it needs a template, which isn't built yet (issue #11).
+Meta only allows free-form messages to a customer within 24 hours of their last message (SMS has no such rule); after that it needs a template, which isn't built yet (issue #11).
 
 ```mermaid
 flowchart TD
-    S["Mitu wants to message a customer first<br/>(status update, reminder, staff reply)"] --> W{"pipeline.window_open:<br/>simulator, or customer wrote in the last 24 h?"}
+    S["Mitu wants to message a customer first<br/>(status update, reminder, staff reply)"] --> W{"pipeline.window_open:<br/>simulator, SMS/call, or customer wrote in the last 24 h?"}
     W -- "yes" --> D["deliver, then store it in the chat"]
     W -- "no" --> N["don't send: return a note for staff,<br/>or 409 on a staff reply"]
     D -- "send failed" --> F["note: sending failed"]
@@ -1063,7 +1073,7 @@ flowchart LR
 | Add a setting to the business file | read it with `tenancy.cfg()` where it's used | document it in [Set up a business](#3-set-up-a-business) |
 | Add a business table | a model subclassing `db.Scoped` | a test in `test_tenancy.py` |
 | Support a new message type | `pipeline.py` (and the channel's webhook parser) | a test in `test_webhook.py` |
-| Add a channel | a router like `messenger.py`, a branch in `pipeline.deliver` | route it through `pipeline`, never straight to the agent |
+| Add a channel | a router like `messenger.py` or `twilio.py`, a branch in `pipeline.deliver` | route it through `pipeline`, never straight to the agent |
 | Add an LLM provider | a class in `llm.py` with `run(...)`, its prices in `PRICES` | `LLM_PROVIDER` in `.env.example` and the README |
 | Add a dashboard page | an endpoint in `main.py`, a page in `Dashboard.jsx`, a link in `App.jsx` | `npm run build` |
 | Add an env var | `config.py` | `.env.example` and the README |

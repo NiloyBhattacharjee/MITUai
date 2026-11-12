@@ -34,6 +34,9 @@ WHATSAPP_VERIFY_TOKEN = env("WHATSAPP_VERIFY_TOKEN")
 WHATSAPP_APP_SECRET = env("WHATSAPP_APP_SECRET")
 GRAPH_API_VERSION = env("GRAPH_API_VERSION", "v21.0")
 PUBLIC_URL = env("PUBLIC_URL").rstrip("/")  # e.g. https://mitu.example.com; Messenger/Instagram fetch photos from here
+# One Twilio account for every business: SMS and phone calls. Each business's own number is on its shops row.
+TWILIO_ACCOUNT_SID = env("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = env("TWILIO_AUTH_TOKEN")
 
 # The first business: seed.py creates it from these when the database has none (see README).
 BUSINESS_FILE = Path(env("BUSINESS_FILE", str(ROOT / "business.yaml")))
@@ -45,6 +48,7 @@ WHATSAPP_PHONE_NUMBER_ID = env("WHATSAPP_PHONE_NUMBER_ID")
 PAGE_ACCESS_TOKEN = env("PAGE_ACCESS_TOKEN")
 PAGE_ID = env("PAGE_ID")
 INSTAGRAM_ID = env("INSTAGRAM_ID")
+TWILIO_NUMBER = env("TWILIO_NUMBER")
 
 STT_MIN_CONFIDENCE = float(env("STT_MIN_CONFIDENCE", "0.5"))
 VOICE_MAX_SECONDS = 120

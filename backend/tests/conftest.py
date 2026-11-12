@@ -5,7 +5,8 @@ from pathlib import Path
 
 _tmp = Path(tempfile.mkdtemp())
 os.environ.update(DATABASE_URL=f"sqlite:///{_tmp / 'test.db'}", MEDIA_DIR=str(_tmp / "media"),
-                  WHATSAPP_APP_SECRET="test-secret", WHATSAPP_VERIFY_TOKEN="verify-me", PUBLIC_URL="https://shop.test")
+                  WHATSAPP_APP_SECRET="test-secret", WHATSAPP_VERIFY_TOKEN="verify-me", PUBLIC_URL="https://shop.test",
+                  TWILIO_ACCOUNT_SID="AC-test", TWILIO_AUTH_TOKEN="twilio-secret")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import hashlib  # noqa: E402
@@ -20,7 +21,8 @@ from app.db import Base, LoginSession, Session, Staff, engine  # noqa: E402
 auth.SCRYPT_N = 2**4  # fast hashes in tests; real ones use 2**14
 STAFF = {"Owner": "pw", "Rina": "rina-pw", "Karim": "karim-pw"}
 CAFE_FILE = Path(__file__).resolve().parents[2] / "examples" / "cafe.yaml"  # most tests, and the eval, run on the café
-CHANNELS = dict(whatsapp_phone_number_id="123", whatsapp_token="tok", page_id="page-1", instagram_id="ig-1", page_token="page-tok")
+CHANNELS = dict(whatsapp_phone_number_id="123", whatsapp_token="tok", page_id="page-1", instagram_id="ig-1", page_token="page-tok",
+                twilio_number="+15550001111")
 
 
 def add_cafe(db, shop_id: str, staff: dict[str, str], business=CAFE_FILE, **channels):

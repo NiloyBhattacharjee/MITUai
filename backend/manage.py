@@ -5,9 +5,10 @@
     python manage.py update-shop ID business.yaml       (its settings from the file, plus menu items it doesn't have yet)
     python manage.py add-staff ID NAME PASSWORD
     python manage.py connect ID [--whatsapp-number-id X] [--whatsapp-token T] [--page-id P] [--instagram-id I] [--page-token T]
+                                [--twilio-number +61...]
 
 ID is the short name staff type to sign in, e.g. little-fern. connect stores the ids Meta sends with each webhook, so
-messages reach the right business, and the tokens to reply with.
+messages, texts and calls reach the right business, and the tokens to reply with.
 """
 import argparse
 import re
@@ -45,7 +46,7 @@ def main(argv: list[str]):
     staff.add_argument("password")
     con = cmd.add_parser("connect")
     con.add_argument("id")
-    for flag in ("--whatsapp-number-id", "--whatsapp-token", "--page-id", "--instagram-id", "--page-token"):
+    for flag in ("--whatsapp-number-id", "--whatsapp-token", "--page-id", "--instagram-id", "--page-token", "--twilio-number"):
         con.add_argument(flag)
     a = cli.parse_args(argv)
 
@@ -55,7 +56,8 @@ def main(argv: list[str]):
             for s in db.scalars(select(Shop).order_by(Shop.id)):
                 people = ", ".join(db.scalars(select(Staff.name).where(Staff.shop_id == s.id)))
                 print(f"{s.id:20} {s.config.get('name', ''):28} WhatsApp {s.whatsapp_phone_number_id or '-':16} "
-                      f"Page {s.page_id or '-':16} Instagram {s.instagram_id or '-':16} Staff: {people}")
+                      f"Page {s.page_id or '-':16} Instagram {s.instagram_id or '-':16} "
+                      f"Phone {s.twilio_number or '-':16} Staff: {people}")
         elif a.cmd == "add-shop":
             if not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,39}", a.id):
                 sys.exit("The ID is 2-40 lowercase letters, digits and dashes, e.g. little-fern")
@@ -82,7 +84,8 @@ def main(argv: list[str]):
         elif a.cmd == "connect":
             shop = get_shop(db, a.id)
             for flag, column in [("whatsapp_number_id", "whatsapp_phone_number_id"), ("whatsapp_token", "whatsapp_token"),
-                                 ("page_id", "page_id"), ("instagram_id", "instagram_id"), ("page_token", "page_token")]:
+                                 ("page_id", "page_id"), ("instagram_id", "instagram_id"), ("page_token", "page_token"),
+                                 ("twilio_number", "twilio_number")]:
                 if getattr(a, flag) is not None:
                     setattr(shop, column, getattr(a, flag) or None)
             db.commit()
