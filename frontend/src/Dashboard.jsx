@@ -8,6 +8,8 @@ const CHANNEL = {
   whatsapp: { label: 'WhatsApp', dot: 'bg-[#25d366]' },
   messenger: { label: 'Messenger', dot: 'bg-[#0866ff]' },
   instagram: { label: 'Instagram', dot: 'bg-[#e1306c]' },
+  sms: { label: 'SMS', dot: 'bg-[#f22f46]' },
+  call: { label: 'Phone', dot: 'bg-[#f22f46]' },
   sim: { label: 'Simulator', dot: 'bg-faint' },
 }
 const channel = (c) => CHANNEL[c.channel] || { label: c.channel, dot: 'bg-faint' }
