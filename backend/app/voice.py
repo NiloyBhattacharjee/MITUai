@@ -1,4 +1,4 @@
-"""Speech-to-text (OpenAI gpt-4o-transcribe, or Whisper), plus ffmpeg helpers."""
+"""Speech-to-text (OpenAI gpt-4o-transcribe, or Whisper), text-to-speech for voice replies, plus ffmpeg helpers."""
 import io
 import math
 import subprocess
@@ -78,3 +78,17 @@ class OpenAISTT:
 
 def get_stt() -> OpenAISTT:
     return OpenAISTT()
+
+
+# --- text-to-speech ------------------------------------------------------------------------
+
+def speak(text: str) -> bytes:
+    """The reply as an Ogg/Opus voice note, the format WhatsApp plays as a voice message. The model reads the text in
+    whatever language it's written in."""
+    model = env("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
+    body = {"model": model, "voice": env("OPENAI_TTS_VOICE", "coral"), "input": text, "response_format": "opus"}
+    if model.startswith("gpt-"):  # tts-1 takes no instructions
+        body["instructions"] = f"You are the friendly receptionist of {cfg()['name']}. Speak warmly and naturally, at an easy pace."
+    r = httpx.post(f"{OPENAI_URL}/speech", timeout=60, headers={"Authorization": f"Bearer {env('OPENAI_API_KEY')}"}, json=body)
+    r.raise_for_status()
+    return r.content
