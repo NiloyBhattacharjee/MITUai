@@ -18,6 +18,7 @@ Every channel runs the same code path: `pipeline.py` → `agent.respond()` → L
 ```
 business.yaml          the demo shop: hours, delivery, payments, fixed messages, products (each business on the install has its own)
 examples/cafe.yaml     another kind of business: a café that takes orders for today (the tests and the eval use it)
+examples/restaurant.yaml  a Dhaka restaurant that books tables as well as taking orders
 backend/
   app/config.py        .env, money helpers
   app/tenancy.py       which business a request or message belongs to; every query on a business's data is filtered to it
@@ -149,9 +150,10 @@ What a business does follows from the sections in its settings file, and the ass
 | Section | Turns on |
 |---|---|
 | `fulfilment` + `payment_methods` | orders (pickup, delivery zones, any payment methods, e.g. cash on delivery and bKash) and the Packing (or Kitchen) and Orders pages |
+| `reservations` | table bookings (seats, sitting length, biggest party, how far ahead) and the Bookings page; a bigger group goes to a person |
 | `allergen_note` | the allergy rules in the prompt |
 
-On items, `stock: 12` makes the assistant count them down (it never sells more than are left, and a cancelled order puts them back), and `orders_days_ahead: 7` lets customers order for a later day. `kind: an online clothing shop` is how the assistant describes the business. `labels` renames dashboard pages (the café sets `kitchen: Kitchen` and `menu: Menu`; a shop's are Packing and Products), and `try_messages` are the examples the chat simulator offers. `business.yaml` is a working shop; `examples/cafe.yaml` is a café.
+On items, `stock: 12` makes the assistant count them down (it never sells more than are left, and a cancelled order puts them back), and `orders_days_ahead: 7` lets customers order for a later day. `kind: an online clothing shop` is how the assistant describes the business. `labels` renames dashboard pages (the café sets `kitchen: Kitchen` and `menu: Menu`; a shop's are Packing and Products), and `try_messages` are the examples the chat simulator offers. `business.yaml` is a working shop; `examples/cafe.yaml` is a café; `examples/restaurant.yaml` is a restaurant that books tables.
 
 ```bash
 .venv/bin/python manage.py add-shop little-fern ../examples/cafe.yaml --owner-password 'a-long-password'
@@ -209,7 +211,7 @@ Simplest options picked where the brief was open:
 - **Order confirmation is enforced in code, not just the prompt.** `create_order(confirmed=false)` checks everything and quotes, and stores the quote on the chat. `confirmed=true` only works if that quote was made in an *earlier* turn, so the customer must have sent a message after seeing the summary. Whether that message means "yes" is the LLM's call. Confirming checks everything again (sold out since? kitchen closed? orders paused?), and if the price changed it shows the new total and asks again.
 - **The demo is a shop that sells in DMs, not a café.** Cafés mostly take orders through delivery apps, so chat is a side channel for them; for Facebook and Instagram sellers the chat is the whole shop. The café stays as `examples/cafe.yaml`, and the tests and eval still run on it.
 - **Orders are for today only** by default, for "as soon as possible" (now plus `prep_minutes`) or a time today inside opening hours. A shop that ships sets `orders_days_ahead`; the time must still be inside its hours that day. There's no capacity per day: add one when a business gets more orders than it can make.
-- **Orders only, for now.** Table bookings, salon appointments and an approvals queue were built and then taken out to keep the demo small; they're in git history (the commit that removed them says so) for when a business needs them. A refund, discount or other exception goes to a person through the handoff, so the assistant never promises or refuses one itself.
+- **Orders and table bookings; no appointments or approvals queue.** Table bookings came back for restaurants, where a chat that books a table is the receptionist's main job (`examples/restaurant.yaml`); they only switch on with a `reservations` section, so the shop and the café never see them. Salon appointments and the approvals queue stay out; they're in git history (commit 297fc05 removed them). A refund, discount, bigger group than `max_party` or other exception goes to a person through the handoff, so the assistant never promises or refuses one itself.
 - **One reminder** per unanswered order summary, checked every minute by the backend and sent only inside the messaging window. It's marked before sending, so a failed send never becomes a second nudge.
 - **Sold out is a switch; stock counts are optional.** Cafés run out of things during the day and nobody counts croissants into a system, so items without `stock` just have the switch. A shop sets `stock`: placing an order counts it down with a conditional update (two customers can't both buy the last one), and cancelling, by the customer or on the dashboard, puts it back.
 - **Allergens:** the assistant only repeats the tags on each item plus the business's allergen note, never says a dish is safe, and hands serious allergy questions to a person.
@@ -931,6 +933,7 @@ The breakdowns below go from the middle out: the message path first, then the da
 | Simulator | `POST /api/sim/message`, `/voice`, `/photo`, `GET /api/sim/{phone}/messages` |
 | Conversations | `GET /api/conversations`, `GET .../{id}/messages` (with "AI used" and cost), `GET /api/messages/{id}/steps`, `POST .../{id}/reply`, `POST .../{id}/bot`, `GET /api/saved-replies` |
 | Orders | `GET /api/orders` (`?active=true` for the kitchen), `GET /api/orders/export.csv`, `PATCH /api/orders/{id}` (status, tells the customer) |
+| Bookings | `GET /api/bookings?days=14`, `PATCH /api/bookings/{id}` (booked, arrived, no_show, cancelled; cancelling tells the customer) |
 | Settings | `GET` and `PUT /api/settings` (`orders_paused`) |
 | Menu | `GET` and `POST /api/menu`, `PATCH` and `DELETE /api/menu/{id}`, `POST /api/menu/{id}/photo` |
 | Overview | `GET /api/analytics?days=30` |

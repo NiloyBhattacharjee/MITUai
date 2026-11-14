@@ -151,6 +151,20 @@ class Order(Scoped, Base):
     created_at: Mapped[datetime] = mapped_column(default=now)
 
 
+class Booking(Scoped, Base):
+    """A table booking, for a business with a reservations section."""
+    __tablename__ = "bookings"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    conversation_id: Mapped[str | None] = mapped_column(String(100), index=True)
+    customer_name: Mapped[str] = mapped_column(String(100))
+    phone: Mapped[str] = mapped_column(String(20))
+    party_size: Mapped[int] = mapped_column(Integer)
+    at: Mapped[datetime] = mapped_column(index=True)  # UTC
+    notes: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="booked")
+    created_at: Mapped[datetime] = mapped_column(default=now)
+
+
 class Setting(Scoped, Base):
     """Switches staff flip in the dashboard, e.g. orders_paused."""
     __tablename__ = "settings"
@@ -187,6 +201,7 @@ class LlmUsage(Scoped, Base):
 
 
 ORDER_STATUSES = ["new", "preparing", "ready", "completed", "cancelled"]
+BOOKING_STATUSES = ["booked", "arrived", "no_show", "cancelled"]
 
 
 def init_db():

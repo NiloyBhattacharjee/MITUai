@@ -11,6 +11,7 @@ export const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
 
 // Lucide-style 24px stroke icons.
 const ICONS = {
+  bookings: 'M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM16 2v4M8 2v4M3 10h18',
   overview: 'M3 3v18h18M7 16v-4M12 16V8M17 16V5',
   chats: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z',
   orders: 'M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0',
@@ -54,6 +55,7 @@ export const Icon = ({ name, className = 'w-[18px] h-[18px]' }) => (
 export const STATUS_STYLE = {
   new: 'bg-info/10 text-info', preparing: 'bg-warn/10 text-warn', ready: 'bg-violet/10 text-violet',
   completed: 'bg-ok/10 text-ok', cancelled: 'bg-danger/10 text-danger',
+  booked: 'bg-info/10 text-info', arrived: 'bg-ok/10 text-ok', no_show: 'bg-danger/10 text-danger',
 }
 export const statusLabel = (s) => s[0].toUpperCase() + s.slice(1).replace('_', '-')
 export const StatusBadge = ({ status }) => <span className={cx('chip', STATUS_STYLE[status])}>{statusLabel(status)}</span>

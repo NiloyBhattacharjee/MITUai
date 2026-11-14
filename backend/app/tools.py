@@ -10,16 +10,29 @@ from sqlalchemy import select, update
 
 from . import hours, notify, options
 from .config import MEDIA_DIR, cents, money
-from .db import Conversation, MenuItem, Message, Order, Setting, now
+from .db import Booking, Conversation, MenuItem, Message, Order, Setting, now
 from .tenancy import cfg, shop_id
 
 log = logging.getLogger(__name__)
 MAX_QTY = 20
 
 
-# The business in scope's settings (its business.yaml). With fulfilment + payment_methods it takes orders.
+# The business in scope's settings (its business.yaml). With fulfilment + payment_methods it takes orders, with reservations
+# it books tables.
 def sells() -> bool:
     return bool(fulfilment())
+
+
+def tables() -> bool:
+    return "reservations" in cfg()
+
+
+def res() -> dict:
+    return cfg()["reservations"]
+
+
+def sitting() -> timedelta:
+    return timedelta(minutes=res()["sitting_minutes"])
 
 
 def fulfilment() -> dict:
@@ -321,17 +334,117 @@ def cancel_order(ctx: Ctx, order_id: int) -> dict:
 def saved_details(ctx: Ctx) -> dict:
     # Only this chat's own history: looking up by a typed phone number would hand out strangers' details.
     o = ctx.db.scalar(select(Order).where(Order.conversation_id == ctx.conv.id).order_by(Order.id.desc()).limit(1))
-    if not o:
-        return {"note": "No earlier order in this chat. Ask for the details."}
-    return {"customer_name": o.customer_name, "phone": o.phone, "address": o.address,
+    b = ctx.db.scalar(select(Booking).where(Booking.conversation_id == ctx.conv.id).order_by(Booking.id.desc()).limit(1))
+    latest = max((x for x in (o, b) if x), key=lambda x: x.created_at, default=None)
+    if not latest:
+        return {"note": "No earlier order or booking in this chat. Ask for the details."}
+    return {"customer_name": latest.customer_name, "phone": latest.phone, "address": o.address if o else None,
             "instruction": "Ask whether to use these again instead of asking for each one."}
+
+
+# --- table bookings -----------------------------------------------------------------------------
+
+def _bookable(at: datetime) -> bool:
+    last = timedelta(minutes=res().get("last_booking_before_close", 60))
+    return any(start <= at <= end - last for start, end in hours.periods(at.date()))
+
+
+def _seats_taken(db, at: datetime) -> int:
+    # ponytail: counts every booking within a sitting of this one as overlapping it, which over-counts a little
+    # (two that don't overlap each other both block this one); a per-table plan would be exact.
+    lo, hi = hours.to_utc(at - sitting()), hours.to_utc(at + sitting())
+    return sum(b.party_size for b in db.scalars(select(Booking).where(Booking.status == "booked", Booking.at > lo, Booking.at < hi)))
+
+
+def _fits(db, at: datetime, party: int) -> bool:
+    return _bookable(at) and at >= hours.local_now() and _seats_taken(db, at) + party <= res()["capacity"]
+
+
+def _alternatives(db, day: date, party: int, near: datetime) -> list[str]:
+    slots = [start + timedelta(minutes=15 * k) for start, end in hours.periods(day) for k in range(int((end - start).total_seconds() // 900) + 1)]
+    free = sorted((s for s in slots if _fits(db, s, party)), key=lambda s: abs(s - near))
+    return [f"{s:%H:%M}" for s in sorted(free[:3])]
+
+
+def _booking_time(date_s: str, time_s: str, party, errors: list) -> datetime | None:
+    try:
+        at = datetime.combine(date.fromisoformat(str(date_s)), time.fromisoformat(str(time_s)))
+    except ValueError:
+        errors.append("date must be YYYY-MM-DD and time HH:MM (24-hour)")
+        return None
+    now = hours.local_now()
+    if not isinstance(party, int) or party < 1:
+        errors.append("party_size must be a whole number of people")
+    elif party > res()["max_party"]:
+        errors.append(f"We book groups of up to {res()['max_party']} here; bigger groups are arranged by the team.")
+    if at < now:
+        errors.append(f"That time has passed (it's now {hours.label(now)}).")
+    elif at.date() > now.date() + timedelta(days=res()["days_ahead"]):
+        errors.append(f"We take bookings up to {res()['days_ahead']} days ahead.")
+    elif not _bookable(at):
+        errors.append(f"We can't book {hours.label(at)}. On {at:%A}s we're open {hours.spec(at.date())}, and the last booking is "
+                      f"{res().get('last_booking_before_close', 60)} minutes before closing.")
+    return None if errors else at
+
+
+def check_availability(ctx: Ctx, date: str, time: str, party_size: int) -> dict:
+    errors = []
+    at = _booking_time(date, time, party_size, errors)
+    if errors:
+        big = isinstance(party_size, int) and party_size > res()["max_party"]
+        return {"available": False, "problems": errors,
+                **({"instruction": "Get the date, time and name, then call escalate_to_human so the team arranges it."} if big else {})}
+    if _fits(ctx.db, at, party_size):
+        return {"available": True, "when": hours.label(at), "party_size": party_size}
+    return {"available": False, "when": hours.label(at), "problems": ["Fully booked at that time."],
+            "other_times_that_day": _alternatives(ctx.db, at.date(), party_size, at)}
+
+
+def book_table(ctx: Ctx, customer_name: str, phone: str, party_size: int, date: str, time: str, notes: str = "") -> dict:
+    errors = []
+    at = _booking_time(date, time, party_size, errors)
+    if not (p := normalize_phone(phone)):
+        errors.append("phone must be a valid phone number")
+    if not str(customer_name).strip():
+        errors.append("customer_name is missing")
+    if errors:
+        return {"error": "Not booked", "problems": errors}
+    utc = hours.to_utc(at)
+    if same := ctx.db.scalar(select(Booking).where(Booking.conversation_id == ctx.conv.id, Booking.at == utc, Booking.status == "booked")):
+        return {"status": "ALREADY_BOOKED", "booking_id": same.id, "when": hours.label(at), "party_size": same.party_size}
+    if not _fits(ctx.db, at, party_size):
+        return {"error": "Fully booked at that time.", "other_times_that_day": _alternatives(ctx.db, at.date(), party_size, at)}
+    b = Booking(conversation_id=ctx.conv.id, customer_name=customer_name.strip(), phone=p, party_size=party_size, at=utc,
+                notes=str(notes or "").strip()[:500] or None)
+    ctx.db.add(b)
+    ctx.db.commit()
+    return {"status": "BOOKED", "booking_id": b.id, "when": hours.label(at), "party_size": party_size}
+
+
+def my_bookings(ctx: Ctx) -> dict:
+    rows = ctx.db.scalars(select(Booking).where(Booking.conversation_id == ctx.conv.id).order_by(Booking.at.desc()).limit(5)).all()
+    if not rows:
+        return {"error": "No bookings made in this chat."}
+    return {"bookings": [{"booking_id": b.id, "status": b.status, "when": hours.label(hours.to_local(b.at)), "party_size": b.party_size,
+                          "name": b.customer_name, "notes": b.notes} for b in rows]}
+
+
+def cancel_booking(ctx: Ctx, booking_id: int) -> dict:
+    b = _own(ctx, Booking, booking_id)
+    if not b:
+        return {"error": f"No booking #{booking_id} was made in this chat."}
+    if b.status != "booked" or hours.to_local(b.at) < hours.local_now():
+        return {"error": f"Booking #{b.id} is {b.status} and can't be cancelled here."}
+    b.status = "cancelled"
+    ctx.db.commit()
+    return {"status": "CANCELLED", "booking_id": b.id}
 
 
 # --- the business -------------------------------------------------------------------------------
 
 def topics() -> list[str]:
     """What get_business_info can tell, given what this business does."""
-    return ["hours", "location", *(["ordering", "payment"] if sells() else []), *(["allergens"] if cfg().get("allergen_note") else []),
+    return ["hours", "location", *(["ordering", "payment"] if sells() else []), *(["bookings"] if tables() else []), *(["allergens"] if cfg().get("allergen_note") else []),
             "about"]
 
 
@@ -347,6 +460,8 @@ def get_business_info(ctx: Ctx, topic: str) -> dict:
                         "orders_for": f"today and up to {days_ahead()} days ahead" if days_ahead() else "today only"}}
     if topic == "payment":
         return {topic: payments()}
+    if topic == "bookings":
+        return {topic: {"max_party": res()["max_party"], "days_ahead": res()["days_ahead"], "sitting_minutes": res()["sitting_minutes"]}}
     return {topic: b["allergen_note" if topic == "allergens" else topic]}
 
 
@@ -356,12 +471,15 @@ def escalate_to_human(ctx: Ctx, reason: str) -> dict:
 
 
 FUNCTIONS = {f.__name__: f for f in [search_menu, get_menu, get_item, send_item_photo, saved_details, create_order, get_order_status,
-                                     cancel_order, get_business_info, escalate_to_human]}
+                                     cancel_order, check_availability, book_table, my_bookings, cancel_booking, get_business_info,
+                                     escalate_to_human]}
 
 
 def enabled() -> set[str]:
-    """The tools this business uses: no ordering tools for one that doesn't take orders."""
-    return set(FUNCTIONS) - (set() if sells() else {"create_order", "get_order_status", "cancel_order"})
+    """The tools this business uses: no ordering tools for one that doesn't take orders, no booking tools without tables."""
+    off = set() if sells() else {"create_order", "get_order_status", "cancel_order"}
+    off |= set() if tables() else {"check_availability", "book_table", "my_bookings", "cancel_booking"}
+    return set(FUNCTIONS) - off
 
 _id = {"type": "object", "properties": {"item_id": {"type": "string"}}, "required": ["item_id"]}
 _line = {"type": "object", "properties": {
@@ -369,6 +487,8 @@ _line = {"type": "object", "properties": {
     "options": {"type": "array", "items": {"type": "string"}, "description": "Choice names, e.g. [\"Large\", \"Oat\"]"},
     "notes": {"type": "string", "description": "What the customer asked for on this item, e.g. extra hot, gift wrap"}},
     "required": ["item_id", "quantity"]}
+_when = {"date": {"type": "string", "description": "YYYY-MM-DD"}, "time": {"type": "string", "description": "HH:MM, 24-hour"},
+         "party_size": {"type": "integer"}}
 
 def specs() -> list[dict]:
     """What the LLM sees, built per business: only the tools it uses, and its pickup/delivery and payment choices."""
@@ -389,7 +509,7 @@ def _all_specs() -> list[dict]:
          "input_schema": {"type": "object", "properties": {"category": {"type": "string"}}}},
         {"name": "get_item", "description": "Full details of one item.", "input_schema": _id},
         {"name": "send_item_photo", "description": "Send the customer a photo of an item (only items with has_photo=true).", "input_schema": _id},
-        {"name": "saved_details", "description": "Name, phone and address from this customer's last order in this chat, if any.",
+        {"name": "saved_details", "description": "Name, phone and address from this customer's last order or booking in this chat, if any.",
          "input_schema": {"type": "object", "properties": {}}},
         {"name": "create_order",
          "description": f"Pickup or delivery orders, {'up to ' + str(days_ahead()) + ' days ahead' if days_ahead() else 'for today only'}. Two steps. confirmed=false with all details: checks everything and returns "
@@ -409,9 +529,20 @@ def _all_specs() -> list[dict]:
         {"name": "cancel_order",
          "description": "Cancel an order from this chat that we haven't started on. Only after the customer clearly asked to cancel it.",
          "input_schema": {"type": "object", "properties": {"order_id": {"type": "integer"}}, "required": ["order_id"]}},
+        {"name": "check_availability", "description": "Whether a table is free for a party at a date and time; suggests other times if not.",
+         "input_schema": {"type": "object", "properties": _when, "required": ["date", "time", "party_size"]}},
+        {"name": "book_table",
+         "description": "Book a table. Only after you've repeated the date, time, party size and name to the customer and they agreed.",
+         "input_schema": {"type": "object", "properties": {
+             "customer_name": {"type": "string"}, "phone": {"type": "string"}, **_when,
+             "notes": {"type": "string", "description": "e.g. high chair, birthday, window table"}},
+             "required": ["customer_name", "phone", "date", "time", "party_size"]}},
+        {"name": "my_bookings", "description": "Table bookings made in this chat.", "input_schema": {"type": "object", "properties": {}}},
+        {"name": "cancel_booking", "description": "Cancel a table booking made in this chat. Only after the customer clearly asked to.",
+         "input_schema": {"type": "object", "properties": {"booking_id": {"type": "integer"}}, "required": ["booking_id"]}},
         {"name": "get_business_info",
          "description": "Facts about us: opening hours (and whether we're open now), location and parking, ordering (pickup/delivery, "
-                        "fees, times, whether orders are paused), payment, allergen policy, about.",
+                        "fees, times, whether orders are paused), payment, table booking rules, allergen policy, about.",
          "input_schema": {"type": "object", "properties": {
              "topic": {"type": "string", "enum": topics()}},
              "required": ["topic"]}},

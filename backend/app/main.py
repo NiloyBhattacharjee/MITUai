@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 
 from . import agent, auth, config, hours, messenger, options, pipeline, tenancy, tools, twilio, whatsapp
 from .config import MEDIA_DIR, cents
-from .db import ORDER_STATUSES, Conversation, LlmUsage, MenuItem, Message, Order, Session, Setting, Shop, ToolCall, init_db, now
+from .db import BOOKING_STATUSES, ORDER_STATUSES, Booking, Conversation, LlmUsage, MenuItem, Message, Order, Session, Setting, Shop, ToolCall, init_db, now
 from .tenancy import cfg
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -139,7 +139,7 @@ def me(who: str = dash):
 def business():
     c = cfg()
     return {"id": tenancy.shop_id(), "name": c["name"], "agent_name": c["agent_name"], "currency": c.get("currency", "$"),
-            "orders": tools.sells(), "labels": labels(),  # orders: whether the Kitchen/Packing and Orders pages apply
+            "orders": tools.sells(), "tables": tools.tables(), "labels": labels(),  # orders: whether the Kitchen/Packing and Orders pages apply
             "try_messages": c.get("try_messages", [])}
 
 
@@ -439,6 +439,34 @@ def set_order_status(order_id: int, body: Status):
         text = msgs.get(f"order_{body.status}_{o.fulfilment}") or msgs.get(f"order_{body.status}")
         if body.status != old and text and (conv := db.get(Conversation, o.conversation_id or "")):
             note = pipeline.send_update(db, conv, text.format(order_id=o.id))
+    return {"ok": True, "note": note}
+
+
+# --- table bookings ------------------------------------------------------------------------------
+
+@app.get("/api/bookings", dependencies=[dash])
+def bookings(days: int = Query(14, ge=1, le=90)):
+    """Bookings from the start of today (business time) for the next `days` days."""
+    start = hours.to_utc(datetime.combine(hours.local_now().date(), time()))
+    with Session() as db:
+        rows = db.scalars(select(Booking).where(Booking.at >= start, Booking.at < start + timedelta(days=days)).order_by(Booking.at))
+        return [{"id": b.id, "customer_name": b.customer_name, "phone": b.phone, "party_size": b.party_size, "at": iso(b.at),
+                 "notes": b.notes, "status": b.status, "conversation_id": b.conversation_id} for b in rows]
+
+
+@app.patch("/api/bookings/{booking_id}", dependencies=[dash])
+def set_booking_status(booking_id: int, body: Status):
+    """Arrived, no-show or cancelled; the customer is told when it's cancelled."""
+    if body.status not in BOOKING_STATUSES:
+        raise HTTPException(400, f"status must be one of {BOOKING_STATUSES}")
+    with Session() as db:
+        b = _get(db, Booking, booking_id)
+        old, b.status = b.status, body.status
+        db.commit()
+        note = None
+        text = cfg()["messages"].get("booking_cancelled")
+        if body.status == "cancelled" and old != "cancelled" and text and (conv := db.get(Conversation, b.conversation_id or "")):
+            note = pipeline.send_update(db, conv, text.format(when=hours.label(hours.to_local(b.at)), party_size=b.party_size))
     return {"ok": True, "note": note}
 
 
