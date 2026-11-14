@@ -62,6 +62,30 @@ function useScript(lines, key) {
 }
 
 
+// A WhatsApp voice note: play button and waveform; the waveform fills in as if it's playing.
+const WAVE = [3, 6, 9, 12, 7, 10, 14, 9, 5, 11, 15, 10, 6, 12, 8, 5, 9, 13, 8, 6, 4, 7, 10, 6, 3]
+const Bars = ({ className }) => (
+  <span className={cx('flex w-[136px] h-4 items-center justify-between', className)}>
+    {WAVE.map((h, i) => <i key={i} className="w-[3px] rounded-full bg-current" style={{ height: h }} />)}
+  </span>
+)
+function VoiceNote({ len }) {
+  return (
+    <span className="block pr-1">
+      <span className="flex items-center gap-2">
+        <Icon name="play" className="w-5 h-5 shrink-0 fill-current text-(--wa-meta)" />
+        <span className="relative">
+          <Bars className="text-(--wa-meta) opacity-50" />
+          <span className="wa-play absolute inset-y-0 left-0 overflow-hidden" style={{ animationDuration: `${+len.split(':')[1]}s` }}>
+            <Bars className="text-[#00a884]" />
+          </span>
+        </span>
+      </span>
+      <span className="mt-1 ml-7 flex items-center gap-1 text-[10.5px] text-(--wa-meta)"><Icon name="mic" className="w-3 h-3 text-[#53bdeb]" />{len}</span>
+    </span>
+  )
+}
+
 // A WhatsApp chat as the customer sees it: the shop is the contact, the customer's own messages are on the right.
 // Fixed size, so the frame never moves as messages arrive. Colours are WhatsApp's own (.wa in index.css).
 function Phone({ title, t, lines, typing, className }) {
@@ -97,7 +121,7 @@ function Phone({ title, t, lines, typing, className }) {
             <div key={i} className={cx('bubble relative flow-root w-fit max-w-[82%] rounded-[8px] px-2 pt-1.5 pb-1 shadow-[0_1px_.5px_rgba(11,20,26,.13)]',
               out ? 'ml-auto bg-(--wa-out) origin-bottom-right' : 'bg-(--wa-in) origin-bottom-left',
               first ? cx('mt-2', out ? 'wa-tail-out rounded-tr-none' : 'wa-tail-in rounded-tl-none') : 'mt-0.5')}>
-              {text}
+              {text.startsWith('🎤') ? <VoiceNote len={text.slice(2)} /> : text}
               <span className="float-right ml-2 mt-1.5 -mb-0.5 flex items-center gap-0.5 text-[10.5px] text-(--wa-meta)">
                 {time(i)}
                 {out && <Icon name="ticks" className={cx('w-4 h-4 transition-colors duration-500', read ? 'text-[#53bdeb]' : 'text-(--wa-meta)')} />}
@@ -124,15 +148,7 @@ function Phone({ title, t, lines, typing, className }) {
   )
 }
 
-// Every word on the page, in English and Bangla. The café's chat stays in English in both: its customers are in Sydney.
-const CAFE_CHAT = [
-  ['them', '🎤 Voice note · 0:04'],
-  ['mitu', 'Heard: “two flat whites, one with oat, for pickup.” Regular size? That’s $10.80, ready in 15 min.'],
-  ['them', 'yes please!', 'order'],
-  ['mitu', 'Order #87 confirmed ✓ Two flat whites, one oat, ready at the counter in 15 minutes.', 'ready'],
-  ['them', 'is the risotto gluten free?'],
-  ['mitu', 'The Mushroom Risotto has no gluten ingredients, but our kitchen handles flour, so I can’t promise it’s safe for coeliacs.'],
-]
+// Every word on the page, in English and Bangla. In the chats, "🎤0:05" is a voice note five seconds long.
 
 const COPY = {
   en: {
@@ -152,20 +168,21 @@ const COPY = {
       ['mitu', 'Done ✓ Order #1042 is placed. We’ll message you when it ships.'],
     ],
     asks: ['price?', 'is M available?', 'delivery charge outside Dhaka?', 'COD?', 'how much is this one? 📷',
-      'any oat milk?', 'when will my order arrive?', 'is it gluten free?', '🎤 voice note', 'bKash number?'],
+      'table for 6 on Friday?', 'when will my order arrive?', 'can I pre-order?', '🎤 voice note', 'bKash number?'],
     features: ['Features', 'Your best salesperson, in every chat at once',
       'Most messages are the same few questions. Mitu answers them from your own catalogue and settings, and your team only sees what needs them.', [
         ['chats', 'Answers every DM', 'Prices, sizes, colours, what’s in stock, delivery charges, opening hours. Day and night, in seconds.'],
         ['orders', 'Takes orders end to end', 'Pickup or delivery, cash on delivery or bKash, today or a later day. Nothing is placed until the customer says yes.'],
         ['products', 'Never oversells', 'Stock counts down with every order and goes back up when one is cancelled. The last one is never sold twice.'],
-        ['mic', 'Voice notes and photos', 'Customers can talk instead of type, in English or Bangla, or send a screenshot of a post: “how much is this one?”'],
+        ['users', 'Books tables like a receptionist', 'Checks the seats for that time, offers the nearest free slot when it’s full, and only books once the customer says yes.'],
+        ['mic', 'Voice notes, both ways', 'Customers talk instead of type, in English or Bangla, and can hear the answer back as a voice note. Or send a screenshot of a post: “how much is this one?”'],
         ['phone', 'Texts and phone calls', 'No app or data needed: customers text or call your number and Mitu answers out loud, then sends order updates by SMS.'],
-        ['users', 'Hands off to a person', 'Complaints, refunds, odd requests or “can I talk to someone?” go to your team, and the AI steps back in that chat.'],
+        ['bot', 'Hands off to a person', 'Complaints, refunds, odd requests or “can I talk to someone?” go to your team, and the AI steps back in that chat.'],
         ['kitchen', 'Live packing board', 'Orders land in New, Preparing and Ready columns with a sound. Pause online orders with one button.'],
         ['overview', 'Know your numbers', 'Revenue, top items, pickup vs delivery, how much the AI handled and what it cost, against last period.'],
       ]],
     demos: ['Business demos', 'One assistant, any business that sells in chat',
-      'The same Mitu runs a clothing shop and a café. Pick one and watch a real conversation play out.', 'Meanwhile, in your dashboard', 'live'],
+      'The same Mitu runs a clothing shop and a restaurant. Pick one and watch a real conversation play out.', 'Meanwhile, in your dashboard', 'live'],
     demo: [
       {
         id: 'shop', label: 'Clothing shop', name: 'Nakshi Threads', where: 'Dhaka · Facebook, Instagram, WhatsApp',
@@ -184,12 +201,20 @@ const COPY = {
         },
       },
       {
-        id: 'cafe', label: 'Café', name: 'Little Fern Café', where: 'Newtown, Sydney · WhatsApp',
-        blurb: 'Coffee, breakfast and dinner Thursday to Saturday. Pickup orders with required options, allergens, voice notes.',
-        lines: CAFE_CHAT,
+        id: 'restaurant', label: 'Restaurant', name: 'Kacchi Ghor', where: 'Gulshan, Dhaka · WhatsApp',
+        blurb: 'Answers like a receptionist: books tables by party size and sitting, takes pre-orders, and replies to a voice note with a voice note.',
+        lines: [
+          ['them', '🎤0:05'],
+          ['mitu', '🎤0:07', 'voice'],
+          ['mitu', 'Yes! A table for 6 this Friday at 8 PM is free. Shall I book it in your name?'],
+          ['them', 'yes, Rafi. window table if possible'],
+          ['mitu', 'Booked ✓ Friday 8:00 PM, 6 people, window table requested. Booking #214. See you then!', 'booking'],
+          ['them', 'can we pre-order 3 kacchi?'],
+          ['mitu', 'Of course: 3 full Mutton Kacchi, ৳2,400, ready when you arrive. Shall I confirm?'],
+        ],
         cards: {
-          order: { icon: 'kitchen', title: 'Kitchen · New', lines: ['2 × Flat White (1 oat)', 'Pickup · 15 min', '$10.80'], tone: 'info' },
-          ready: { icon: 'check', title: 'Customer told', lines: ['Order #87 · Pickup', 'Ready 15 min after ordering'], tone: 'ok' },
+          voice: { icon: 'mic', title: 'Voice note answered', lines: ['Heard: “table for 6, Friday 8 pm”', 'Replied with a voice note'], tone: 'ok' },
+          booking: { icon: 'users', title: 'New booking #214', lines: ['Fri · 8:00 PM · 6 guests', 'Rafi · window table'], tone: 'info' },
         },
       },
     ],
@@ -218,20 +243,21 @@ const COPY = {
       ['mitu', 'হয়ে গেছে ✓ অর্ডার #১০৪২ কনফার্ম। পাঠানোর সময় আপনাকে জানিয়ে দেব।'],
     ],
     asks: ['দাম কত?', 'M সাইজ আছে?', 'ঢাকার বাইরে ডেলিভারি চার্জ কত?', 'COD হবে?', 'এটার দাম কত? 📷',
-      'ওট মিল্ক আছে?', 'অর্ডার কবে পাব?', 'এটা কি গ্লুটেন ফ্রি?', '🎤 ভয়েস নোট', 'বিকাশ নম্বর?'],
+      'শুক্রবার ৬ জনের টেবিল হবে?', 'অর্ডার কবে পাব?', 'আগে থেকে অর্ডার দেওয়া যাবে?', '🎤 ভয়েস নোট', 'বিকাশ নম্বর?'],
     features: ['ফিচার', 'আপনার সেরা সেলসম্যান, একসাথে প্রতিটি চ্যাটে',
       'বেশিরভাগ মেসেজে ঘুরেফিরে একই কয়েকটা প্রশ্ন। মিতু আপনার নিজের ক্যাটালগ আর সেটিংস দেখে উত্তর দেয়, আর আপনার টিম শুধু সেটুকুই দেখে যেটা তাদের দেখা দরকার।', [
         ['chats', 'সব মেসেজের উত্তর', 'দাম, সাইজ, রং, স্টকে কী আছে, ডেলিভারি চার্জ, খোলার সময়। দিনরাত, কয়েক সেকেন্ডে।'],
         ['orders', 'শুরু থেকে শেষ পর্যন্ত অর্ডার', 'পিকআপ বা ডেলিভারি, ক্যাশ অন ডেলিভারি বা বিকাশ, আজ বা পরের কোনো দিন। কাস্টমার “হ্যাঁ” না বলা পর্যন্ত কোনো অর্ডার হয় না।'],
         ['products', 'কখনো বাড়তি বিক্রি করে না', 'প্রতিটি অর্ডারে স্টক কমে, ক্যানসেল হলে আবার বাড়ে। শেষ পিসটা কখনো দুবার বিক্রি হয় না।'],
-        ['mic', 'ভয়েস নোট আর ছবি', 'কাস্টমার টাইপ না করে বাংলায় বা ইংরেজিতে কথা বলতে পারে, বা পোস্টের স্ক্রিনশট পাঠাতে পারে: “এটার দাম কত?”'],
+        ['users', 'রিসেপশনিস্টের মতো টেবিল বুকিং', 'ওই সময়ে সিট খালি আছে কিনা দেখে, ভরা থাকলে কাছাকাছি খালি সময় বলে, আর কাস্টমার “হ্যাঁ” বললে তবেই বুক করে।'],
+        ['mic', 'ভয়েস নোট, দুই দিকেই', 'কাস্টমার টাইপ না করে বাংলায় বা ইংরেজিতে কথা বলতে পারে, আর উত্তরও শুনতে পারে ভয়েস নোটে। বা পোস্টের স্ক্রিনশট পাঠাতে পারে: “এটার দাম কত?”'],
         ['phone', 'SMS আর ফোন কল', 'অ্যাপ বা ইন্টারনেট লাগে না: কাস্টমার আপনার নম্বরে SMS বা কল করে, মিতু মুখে উত্তর দেয়, আর অর্ডারের আপডেট পাঠায় SMS-এ।'],
-        ['users', 'মানুষের হাতে তুলে দেয়', 'অভিযোগ, রিফান্ড, অদ্ভুত অনুরোধ বা “কারো সাথে কথা বলতে পারি?” আপনার টিমের কাছে যায়, আর সেই চ্যাটে AI সরে দাঁড়ায়।'],
+        ['bot', 'মানুষের হাতে তুলে দেয়', 'অভিযোগ, রিফান্ড, অদ্ভুত অনুরোধ বা “কারো সাথে কথা বলতে পারি?” আপনার টিমের কাছে যায়, আর সেই চ্যাটে AI সরে দাঁড়ায়।'],
         ['kitchen', 'লাইভ প্যাকিং বোর্ড', 'অর্ডার আসে নতুন, প্রস্তুত হচ্ছে আর রেডি কলামে, সাথে একটা শব্দ। এক বাটনে অনলাইন অর্ডার বন্ধ রাখুন।'],
         ['overview', 'নিজের হিসাব জানুন', 'আয়, সবচেয়ে বেশি বিক্রি, পিকআপ বনাম ডেলিভারি, AI কতটা সামলাল আর খরচ কত, আগের সময়ের সাথে তুলনা করে।'],
       ]],
     demos: ['বিজনেস ডেমো', 'একটাই অ্যাসিস্ট্যান্ট, চ্যাটে বিক্রি করা যেকোনো ব্যবসার জন্য',
-      'একই মিতু চালায় একটা কাপড়ের দোকান আর একটা ক্যাফে। একটা বেছে নিন আর আসল কথোপকথন দেখুন।', 'এদিকে, আপনার ড্যাশবোর্ডে', 'লাইভ'],
+      'একই মিতু চালায় একটা কাপড়ের দোকান আর একটা রেস্টুরেন্ট। একটা বেছে নিন আর আসল কথোপকথন দেখুন।', 'এদিকে, আপনার ড্যাশবোর্ডে', 'লাইভ'],
     demo: [
       {
         id: 'shop', label: 'কাপড়ের দোকান', name: 'Nakshi Threads', where: 'ঢাকা · ফেসবুক, ইনস্টাগ্রাম, হোয়াটসঅ্যাপ',
@@ -250,12 +276,20 @@ const COPY = {
         },
       },
       {
-        id: 'cafe', label: 'ক্যাফে', name: 'Little Fern Café', where: 'নিউটাউন, সিডনি · হোয়াটসঅ্যাপ',
-        blurb: 'কফি, নাশতা, আর বৃহস্পতি থেকে শনিবার ডিনার। দরকারি অপশনসহ পিকআপ অর্ডার, অ্যালার্জেন, ভয়েস নোট।',
-        lines: CAFE_CHAT,
+        id: 'restaurant', label: 'রেস্টুরেন্ট', name: 'Kacchi Ghor', where: 'গুলশান, ঢাকা · হোয়াটসঅ্যাপ',
+        blurb: 'রিসেপশনিস্টের মতো উত্তর দেয়: কতজন আর কোন সময় দেখে টেবিল বুক করে, আগে থেকে অর্ডার নেয়, আর ভয়েস নোটের উত্তর দেয় ভয়েস নোটে।',
+        lines: [
+          ['them', '🎤0:05'],
+          ['mitu', '🎤0:07', 'voice'],
+          ['mitu', 'জি, এই শুক্রবার রাত ৮টায় ৬ জনের টেবিল খালি আছে। আপনার নামে বুক করব?'],
+          ['them', 'হ্যাঁ, রাফি। জানালার পাশে হলে ভালো হয়'],
+          ['mitu', 'বুক হয়ে গেছে ✓ শুক্রবার রাত ৮টা, ৬ জন, জানালার পাশের টেবিলের অনুরোধ রাখা হলো। বুকিং #২১৪। দেখা হবে!', 'booking'],
+          ['them', 'আসার আগে ৩টা কাচ্চি অর্ডার করে রাখা যাবে?'],
+          ['mitu', 'অবশ্যই: ৩টা ফুল মাটন কাচ্চি, ৳২,৪০০, আপনি আসলেই রেডি থাকবে। কনফার্ম করব?'],
+        ],
         cards: {
-          order: { icon: 'kitchen', title: 'কিচেন · নতুন', lines: ['২ × Flat White (১টা ওট)', 'পিকআপ · ১৫ মিনিট', '$10.80'], tone: 'info' },
-          ready: { icon: 'check', title: 'কাস্টমারকে জানানো হয়েছে', lines: ['অর্ডার #87 · পিকআপ', 'অর্ডারের ১৫ মিনিট পরে রেডি'], tone: 'ok' },
+          voice: { icon: 'mic', title: 'ভয়েস নোটের উত্তর', lines: ['শুনেছে: “শুক্রবার রাত ৮টা, ৬ জন”', 'উত্তর গেছে ভয়েস নোটে'], tone: 'ok' },
+          booking: { icon: 'users', title: 'নতুন বুকিং #২১৪', lines: ['শুক্র · রাত ৮টা · ৬ জন', 'রাফি · জানালার পাশে'], tone: 'info' },
         },
       },
     ],
