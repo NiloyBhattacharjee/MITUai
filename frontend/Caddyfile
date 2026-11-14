@@ -2,7 +2,7 @@
 {$SITE_ADDRESS::80} {
 	encode gzip
 
-	@backend path /api/* /media/* /webhook /messenger/webhook
+	@backend path /api/* /media/* /webhook /messenger/webhook /twilio/*
 	handle @backend {
 		reverse_proxy {$BACKEND_URL:backend:8000}
 	}

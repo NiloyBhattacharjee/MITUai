@@ -51,7 +51,8 @@ def first_shop(db) -> Shop:
             sys.exit(f"Password for {name} ({'ADMIN_PASSWORD' if name == 'Owner' else 'STAFF'} in .env): {problem}")
     shop = shops.create(db, config.FIRST_SHOP_ID, shops.read(config.BUSINESS_FILE), owner,
                         whatsapp_phone_number_id=config.WHATSAPP_PHONE_NUMBER_ID or None, whatsapp_token=config.WHATSAPP_TOKEN or None,
-                        page_id=config.PAGE_ID or None, instagram_id=config.INSTAGRAM_ID or None, page_token=config.PAGE_ACCESS_TOKEN or None)
+                        page_id=config.PAGE_ID or None, instagram_id=config.INSTAGRAM_ID or None, page_token=config.PAGE_ACCESS_TOKEN or None,
+                        twilio_number=config.TWILIO_NUMBER or None)
     print(f"Created '{shop.id}' from {config.BUSINESS_FILE.name}. Staff sign in with business ID {shop.id} and their password.")
     return shop
 

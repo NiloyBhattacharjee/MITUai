@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from sqlalchemy import func, select
 
-from . import agent, auth, config, hours, messenger, options, pipeline, tenancy, tools, whatsapp
+from . import agent, auth, config, hours, messenger, options, pipeline, tenancy, tools, twilio, whatsapp
 from .config import MEDIA_DIR, cents
 from .db import BOOKING_STATUSES, ORDER_STATUSES, Booking, Conversation, LlmUsage, MenuItem, Message, Order, Session, Setting, Shop, ToolCall, init_db, now
 from .tenancy import cfg
@@ -66,6 +66,7 @@ if config.DEMO_ORIGINS:  # the marketing site calls /api/demo from its own domai
     app.add_middleware(CORSMiddleware, allow_origins=config.DEMO_ORIGINS, allow_methods=["GET", "POST"], allow_headers=["Content-Type"])
 app.include_router(whatsapp.router)
 app.include_router(messenger.router)
+app.include_router(twilio.router)
 app.mount("/media", StaticFiles(directory=MEDIA_DIR), name="media")
 
 

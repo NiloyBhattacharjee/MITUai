@@ -8,7 +8,7 @@ from pathlib import Path
 
 from sqlalchemy import func, select, update
 
-from . import agent, messenger, notify, tenancy, voice, whatsapp
+from . import agent, messenger, notify, tenancy, twilio, voice, whatsapp
 from .config import MEDIA_DIR, PUBLIC_URL, STT_MIN_CONFIDENCE, VOICE_MAX_SECONDS, money
 from .tenancy import cfg
 from .db import Conversation, Message, SeenWhatsAppMessage, Session, Shop, now
@@ -17,8 +17,11 @@ log = logging.getLogger(__name__)
 WHATSAPP_WINDOW = timedelta(hours=24)  # Meta's rule on WhatsApp, Messenger and Instagram: after it, only templates/tags
 
 
-def deliver(channel: str, phone: str, text: str, image: Path | None = None):
+def deliver(channel: str, phone: str, text: str, image: Path | None = None, audio: Path | None = None):
+    """audio: a voice note of the same reply, sent before the text (WhatsApp only)."""
     if channel == "whatsapp":
+        if audio:
+            whatsapp.send_audio(phone, whatsapp.upload_media(audio.read_bytes(), "audio/ogg"))
         if image:  # text becomes the photo's caption
             whatsapp.send_image(phone, whatsapp.upload_media(image.read_bytes(), mimetypes.guess_type(image.name)[0]), text)
         else:
@@ -29,6 +32,9 @@ def deliver(channel: str, phone: str, text: str, image: Path | None = None):
                 raise RuntimeError("PUBLIC_URL is not set, so Messenger/Instagram can't fetch the photo")
             messenger.send_image(phone, f"{PUBLIC_URL}/media/{image.relative_to(MEDIA_DIR).as_posix()}")
         messenger.send_text(phone, text)
+    elif channel in twilio.CHANNELS:  # after a call too: what the shop sends later goes by SMS
+        # no MMS outside the US and Canada, so a photo goes as a link
+        twilio.send_sms(phone, f"{text} {PUBLIC_URL}/media/{image.relative_to(MEDIA_DIR).as_posix()}" if image and PUBLIC_URL else text)
     # simulator: nothing to push, the page polls the DB
 
 
@@ -37,8 +43,8 @@ def last_customer_message_at(db, conv_id: str):
 
 
 def window_open(channel: str, last_customer_message) -> bool:
-    """Meta only allows free-form messages within 24 hours of the customer's last one."""
-    return channel == "sim" or (last_customer_message is not None and now() - last_customer_message < WHATSAPP_WINDOW)
+    """Meta only allows free-form messages within 24 hours of the customer's last one. SMS has no such rule."""
+    return channel == "sim" or channel in twilio.CHANNELS or (last_customer_message is not None and now() - last_customer_message < WHATSAPP_WINDOW)
 
 
 def send_update(db, conv, text: str) -> str | None:
@@ -136,9 +142,29 @@ def handle_voice(conv_id: str, channel: str, phone: str, audio: bytes, ext: str)
     lap("agent")
     if not reply:
         return
-    deliver(channel, phone, reply.text)
+    spoken = voice_reply(reply, channel)
+    lap("speak")
+    deliver(channel, phone, reply.text, audio=spoken)
     lap("send")
     log.info("voice note %s timings (s): %s", conv_id, timings)
+
+
+def voice_reply(reply: Message, channel: str) -> Path | None:
+    """A voice note of the reply, for a business with voice_replies on, answering a voice note. Saved on the message so the
+    dashboard can play it. On any failure the customer still gets the text."""
+    # ponytail: WhatsApp and the simulator only; Messenger and Instagram would need the audio as a public URL in a format they play.
+    if not cfg().get("voice_replies") or channel not in ("whatsapp", "sim"):
+        return None
+    try:
+        fname = f"{uuid.uuid4().hex}.ogg"
+        (MEDIA_DIR / fname).write_bytes(voice.speak(reply.text))
+    except Exception:
+        log.exception("voice reply failed for message %s", reply.id)
+        return None
+    with Session() as db:
+        db.execute(update(Message).where(Message.id == reply.id).values(audio_path=fname))
+        db.commit()
+    return MEDIA_DIR / fname
 
 
 MIME_EXT = {"audio/ogg": "ogg", "audio/mpeg": "mp3", "audio/mp4": "m4a", "audio/aac": "aac", "audio/amr": "amr", "audio/webm": "webm",
@@ -195,6 +221,20 @@ def handle_meta_event(shop, channel: str, event: dict):
     _mark_done(msg["mid"])
 
 
+def handle_sms(shop, msg: dict):
+    """A text to this business's Twilio number. Same chat as calls from that number."""
+    phone = msg["From"]
+    with tenancy.scope(shop):
+        try:
+            if msg.get("Body", "").strip():
+                handle_text(twilio.conv_id(shop, phone), "sms", phone, msg["Body"])
+            else:  # an MMS photo with no text; MMS only reaches US/Canada numbers anyway
+                canned_reply(twilio.conv_id(shop, phone), "sms", phone, "unsupported_media", "[MMS]")
+        except Exception:
+            log.exception("failed to handle SMS %s", msg.get("MessageSid"))
+    _mark_done(msg["MessageSid"])
+
+
 def _mark_done(message_id: str):
     # Errors count as done too (no retry loop). Only a crash or restart skips this.
     with Session() as db:
@@ -215,5 +255,7 @@ def resume_unfinished():
         log.info("resuming %s message for %s after a restart", channel, shop_id)
         if channel == "whatsapp":
             handle_whatsapp_message(shops[shop_id], payload)
+        elif channel == "sms":
+            handle_sms(shops[shop_id], payload)
         else:
             handle_meta_event(shops[shop_id], channel, payload)

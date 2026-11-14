@@ -15,7 +15,7 @@ log = logging.getLogger(__name__)
 HISTORY_LIMIT = 30
 _locks = defaultdict(threading.Lock)  # one agent turn at a time per chat (customers send bursts)
 
-def system_prompt(first_message: bool) -> str:
+def system_prompt(first_message: bool, channel: str = "") -> str:
     """Built from what this business does (see tools.sells and tools.tables), so the assistant only offers what it can do."""
     b = cfg()
     kind, today_only = b.get("kind", "a business"), not tools.days_ahead()
@@ -26,7 +26,7 @@ def system_prompt(first_message: bool) -> str:
         jobs.append("take pickup and delivery orders" + (" for today" if today_only else ""))
     if tools.tables():
         jobs.append("book tables")
-    parts = [f"""You are {b['agent_name']}, the AI assistant of {b['name']}, {kind}. You chat with customers on WhatsApp, Facebook Messenger and Instagram: you {', '.join(jobs[:-1]) + ' and ' + jobs[-1] if len(jobs) > 1 else jobs[0]}.
+    parts = [f"""You are {b['agent_name']}, the AI assistant of {b['name']}, {kind}. You chat with customers on WhatsApp, Facebook Messenger, Instagram and SMS, and answer phone calls: you {', '.join(jobs[:-1]) + ' and ' + jobs[-1] if len(jobs) > 1 else jobs[0]}.
 
 Style: warm, short chat replies, usually 1-3 sentences, in the language the customer writes in. Plain text, no markdown, no headings. Lists only for items or an order summary.
 
@@ -52,6 +52,10 @@ Never say an order is placed unless create_order returned status PLACED.""")
                      "bigger than we book, get the details and call escalate_to_human.")
     parts.append("Photos: a customer message marked [photo] comes with their image. If it shows something we might sell or do (often a screenshot of one of our posts), search for it and only say we have it if the search finds a match.")
     parts.append("Handoff: call escalate_to_human if the customer asks for a person, is upset or angry, asks for a refund, remake, discount or another exception (never promise or refuse one yourself), has a serious allergy question, wants a large or custom order or an event, or asks anything else you can't do with these tools. Then tell them briefly a team member will reply here soon.")
+    if channel == "call":
+        parts.append("This is a live phone call: a voice reads your reply aloud. Speak in one or two short sentences, with no lists, symbols, emoji or links. "
+                     "Say prices and times the way people say them. Offer a few choices instead of reading out the whole menu. "
+                     "If you hand off, say someone from the team will call or text them back on this number.")
     return "\n\n".join(parts)
 
 
@@ -124,7 +128,7 @@ def respond(conv_id: str, channel: str, phone: str, text: str, is_voice=False, a
             return result
 
         try:
-            reply = llm.get_llm().run(system_prompt(first), build_history(recent[::-1]), tools.specs(), call_tool, usage)
+            reply = llm.get_llm().run(system_prompt(first, channel), build_history(recent[::-1]), tools.specs(), call_tool, usage)
         except Exception:
             log.exception("agent failed for %s", conv_id)
             notify.flag_for_human(db, conv, "Bot error, please check this chat")

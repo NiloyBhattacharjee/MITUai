@@ -140,8 +140,8 @@ const COPY = {
     nav: ['Features', 'Demos', 'How it works', 'Sign in'],
     online: 'online', typing: 'typing…', message: 'Message', today: 'Today',
     badge: 'Answering DMs right now', h1: ['Every DM answered.', 'Every order taken.'],
-    lede: 'Mitu is an AI assistant for shops that sell on Facebook, Instagram and WhatsApp. It answers “price?”, takes the order, counts the stock and hands off to you when a customer needs a person.',
-    cta: ['See it in action', 'What it does'], channels: ['WhatsApp', 'Messenger', 'Instagram'],
+    lede: 'Mitu is an AI assistant for shops that sell on Facebook, Instagram and WhatsApp, and by text and phone call. It answers “price?”, takes the order, counts the stock and hands off to you when a customer needs a person.',
+    cta: ['See it in action', 'What it does'], channels: ['WhatsApp', 'Messenger', 'Instagram', 'SMS', 'Phone calls'],
     floats: ['Order #1042 · ৳1,580', 'Replied in 2 s'],
     hero: [
       ['them', 'price?'],
@@ -159,6 +159,7 @@ const COPY = {
         ['orders', 'Takes orders end to end', 'Pickup or delivery, cash on delivery or bKash, today or a later day. Nothing is placed until the customer says yes.'],
         ['products', 'Never oversells', 'Stock counts down with every order and goes back up when one is cancelled. The last one is never sold twice.'],
         ['mic', 'Voice notes and photos', 'Customers can talk instead of type, in English or Bangla, or send a screenshot of a post: “how much is this one?”'],
+        ['phone', 'Texts and phone calls', 'No app or data needed: customers text or call your number and Mitu answers out loud, then sends order updates by SMS.'],
         ['users', 'Hands off to a person', 'Complaints, refunds, odd requests or “can I talk to someone?” go to your team, and the AI steps back in that chat.'],
         ['kitchen', 'Live packing board', 'Orders land in New, Preparing and Ready columns with a sound. Pause online orders with one button.'],
         ['overview', 'Know your numbers', 'Revenue, top items, pickup vs delivery, how much the AI handled and what it cost, against last period.'],
@@ -194,10 +195,10 @@ const COPY = {
     ],
     how: ['How it works', 'Set up once, then it just answers', [
       ['products', 'Describe your business', 'Products, prices, stock, delivery zones, payment methods and hours, in one settings file or the dashboard.'],
-      ['send', 'Connect your channels', 'Your WhatsApp number, Facebook Page and Instagram account. Every channel runs the same assistant.'],
+      ['send', 'Connect your channels', 'Your WhatsApp number, Facebook Page, Instagram account and a phone number for texts and calls. Every channel runs the same assistant.'],
       ['overview', 'Watch the orders come in', 'Follow every chat live, step in with one click and see what sold.'],
     ]],
-    stats: [[3, '', 'channels: WhatsApp, Messenger, Instagram'], [2, '', 'kinds of business, one install'], [10, '', 'tools the AI can use'], [24, '/7', 'answering, even at 3 am']],
+    stats: [[5, '', 'channels: WhatsApp, Messenger, Instagram, SMS, calls'], [2, '', 'kinds of business, one install'], [10, '', 'tools the AI can use'], [24, '/7', 'answering, even at 3 am']],
     end: ['Stop answering “price?” at midnight', 'Let Mitu take the DMs. You pack the orders.', 'Sign in to your dashboard'],
   },
   bn: {
@@ -205,8 +206,8 @@ const COPY = {
     nav: ['ফিচার', 'ডেমো', 'কীভাবে কাজ করে', 'সাইন ইন'],
     online: 'অনলাইন', typing: 'টাইপ করছে…', message: 'মেসেজ', today: 'আজ',
     badge: 'এই মুহূর্তে মেসেজের উত্তর দিচ্ছে', h1: ['সব মেসেজের উত্তর।', 'সব অর্ডার কনফার্ম।'],
-    lede: 'মিতু হলো ফেসবুক, ইনস্টাগ্রাম আর হোয়াটসঅ্যাপে বিক্রি করা দোকানের AI অ্যাসিস্ট্যান্ট। “দাম কত?”-র উত্তর দেয়, অর্ডার নেয়, স্টক গোনে, আর কাস্টমারের মানুষের সাথে কথা বলা দরকার হলে আপনার হাতে তুলে দেয়।',
-    cta: ['লাইভ দেখুন', 'কী কী করে'], channels: ['হোয়াটসঅ্যাপ', 'মেসেঞ্জার', 'ইনস্টাগ্রাম'],
+    lede: 'মিতু হলো ফেসবুক, ইনস্টাগ্রাম, হোয়াটসঅ্যাপ, SMS আর ফোন কলে বিক্রি করা দোকানের AI অ্যাসিস্ট্যান্ট। “দাম কত?”-র উত্তর দেয়, অর্ডার নেয়, স্টক গোনে, আর কাস্টমারের মানুষের সাথে কথা বলা দরকার হলে আপনার হাতে তুলে দেয়।',
+    cta: ['লাইভ দেখুন', 'কী কী করে'], channels: ['হোয়াটসঅ্যাপ', 'মেসেঞ্জার', 'ইনস্টাগ্রাম', 'SMS', 'ফোন কল'],
     floats: ['অর্ডার #১০৪২ · ৳১,৫৮০', '২ সেকেন্ডে উত্তর'],
     hero: [
       ['them', 'দাম কত?'],
@@ -224,6 +225,7 @@ const COPY = {
         ['orders', 'শুরু থেকে শেষ পর্যন্ত অর্ডার', 'পিকআপ বা ডেলিভারি, ক্যাশ অন ডেলিভারি বা বিকাশ, আজ বা পরের কোনো দিন। কাস্টমার “হ্যাঁ” না বলা পর্যন্ত কোনো অর্ডার হয় না।'],
         ['products', 'কখনো বাড়তি বিক্রি করে না', 'প্রতিটি অর্ডারে স্টক কমে, ক্যানসেল হলে আবার বাড়ে। শেষ পিসটা কখনো দুবার বিক্রি হয় না।'],
         ['mic', 'ভয়েস নোট আর ছবি', 'কাস্টমার টাইপ না করে বাংলায় বা ইংরেজিতে কথা বলতে পারে, বা পোস্টের স্ক্রিনশট পাঠাতে পারে: “এটার দাম কত?”'],
+        ['phone', 'SMS আর ফোন কল', 'অ্যাপ বা ইন্টারনেট লাগে না: কাস্টমার আপনার নম্বরে SMS বা কল করে, মিতু মুখে উত্তর দেয়, আর অর্ডারের আপডেট পাঠায় SMS-এ।'],
         ['users', 'মানুষের হাতে তুলে দেয়', 'অভিযোগ, রিফান্ড, অদ্ভুত অনুরোধ বা “কারো সাথে কথা বলতে পারি?” আপনার টিমের কাছে যায়, আর সেই চ্যাটে AI সরে দাঁড়ায়।'],
         ['kitchen', 'লাইভ প্যাকিং বোর্ড', 'অর্ডার আসে নতুন, প্রস্তুত হচ্ছে আর রেডি কলামে, সাথে একটা শব্দ। এক বাটনে অনলাইন অর্ডার বন্ধ রাখুন।'],
         ['overview', 'নিজের হিসাব জানুন', 'আয়, সবচেয়ে বেশি বিক্রি, পিকআপ বনাম ডেলিভারি, AI কতটা সামলাল আর খরচ কত, আগের সময়ের সাথে তুলনা করে।'],
@@ -259,10 +261,10 @@ const COPY = {
     ],
     how: ['কীভাবে কাজ করে', 'একবার সেট আপ করুন, তারপর নিজেই উত্তর দেয়', [
       ['products', 'আপনার ব্যবসার তথ্য দিন', 'পণ্য, দাম, স্টক, ডেলিভারি জোন, পেমেন্টের উপায় আর খোলার সময়, একটা সেটিংস ফাইলে বা ড্যাশবোর্ডে।'],
-      ['send', 'চ্যানেল যুক্ত করুন', 'আপনার হোয়াটসঅ্যাপ নম্বর, ফেসবুক পেজ আর ইনস্টাগ্রাম অ্যাকাউন্ট। সব চ্যানেলে একই অ্যাসিস্ট্যান্ট চলে।'],
+      ['send', 'চ্যানেল যুক্ত করুন', 'আপনার হোয়াটসঅ্যাপ নম্বর, ফেসবুক পেজ, ইনস্টাগ্রাম অ্যাকাউন্ট আর SMS ও কলের জন্য একটা ফোন নম্বর। সব চ্যানেলে একই অ্যাসিস্ট্যান্ট চলে।'],
       ['overview', 'অর্ডার আসা দেখুন', 'প্রতিটি চ্যাট লাইভ দেখুন, এক ক্লিকে নিজে কথা বলুন আর দেখুন কী বিক্রি হলো।'],
     ]],
-    stats: [[3, '', 'চ্যানেল: হোয়াটসঅ্যাপ, মেসেঞ্জার, ইনস্টাগ্রাম'], [2, '', 'ধরনের ব্যবসা, একটাই ইনস্টল'], [10, '', 'টুল, যা AI ব্যবহার করতে পারে'], [24, '/৭', 'উত্তর দেয়, রাত ৩টায়ও']],
+    stats: [[5, '', 'চ্যানেল: হোয়াটসঅ্যাপ, মেসেঞ্জার, ইনস্টাগ্রাম, SMS, কল'], [2, '', 'ধরনের ব্যবসা, একটাই ইনস্টল'], [10, '', 'টুল, যা AI ব্যবহার করতে পারে'], [24, '/৭', 'উত্তর দেয়, রাত ৩টায়ও']],
     end: ['মাঝরাতে “দাম কত?”-র উত্তর দেওয়া বন্ধ করুন', 'মেসেজ সামলাক মিতু। আপনি অর্ডার প্যাক করুন।', 'আপনার ড্যাশবোর্ডে সাইন ইন করুন'],
   },
 }
