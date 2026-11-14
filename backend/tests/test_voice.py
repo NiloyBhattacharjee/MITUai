@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from sqlalchemy import select
 
@@ -111,3 +113,45 @@ def test_whisper_still_works_when_chosen(db, cafe, openai_stt, monkeypatch):
     t = voice.get_stt().transcribe(b"WAV")
     assert openai_stt["data"]["response_format"] == "verbose_json" and "include[]" not in openai_stt["data"]
     assert t.text == "a flat white" and t.language == "english" and t.confidence == pytest.approx(0.905, abs=0.01)
+
+
+def sent_types(graph) -> list[str]:
+    """The kinds of WhatsApp messages sent, in order (read receipts and uploads left out)."""
+    bodies = [json.loads(r.content) for r in graph if r.url.path.endswith("/messages")]
+    return [b["type"] for b in bodies if "type" in b]
+
+
+def test_voice_note_gets_a_voice_reply_when_the_business_turns_it_on(db, cafe, fake_llm, graph, stt, monkeypatch):
+    monkeypatch.setitem(cfg(), "voice_replies", True)
+    spoken = []
+    monkeypatch.setattr(voice, "speak", lambda text: spoken.append(text) or b"OGGREPLY")
+    stt(Transcript("Table for two tonight?", "en", 0.9))
+    fake_llm.turns = [lambda history, call: "Yes, we have a table for two at 7pm."]
+    pipeline.handle_whatsapp_message(cafe, wa_voice())
+
+    assert spoken == ["Yes, we have a table for two at 7pm."]
+    assert sent_types(graph) == ["audio", "text"]  # the voice note, then the same words to read
+    upload = next(r for r in graph if r.url.path.endswith("/media"))
+    assert b"audio/ogg" in upload.content and b"OGGREPLY" in upload.content
+    bot = db.scalars(select(Message).where(Message.role == "assistant")).one()
+    assert bot.audio_path.endswith(".ogg") and (pipeline.MEDIA_DIR / bot.audio_path).read_bytes() == b"OGGREPLY"
+
+
+def test_typed_messages_and_businesses_without_voice_replies_get_text(db, cafe, fake_llm, graph, stt, monkeypatch):
+    monkeypatch.setattr(voice, "speak", lambda text: pytest.fail("no voice reply expected"))
+    stt(Transcript("Table for two tonight?", "en", 0.9))
+    pipeline.handle_whatsapp_message(cafe, wa_voice())  # voice_replies is off for the café
+    monkeypatch.setitem(cfg(), "voice_replies", True)
+    pipeline.handle_whatsapp_message(cafe, {"from": "8801712345678", "id": "wamid.t1", "type": "text", "text": {"body": "hi"}})
+    assert sent_types(graph) == ["text", "text"]
+
+
+def test_a_failed_voice_reply_still_sends_the_text(db, cafe, fake_llm, graph, stt, monkeypatch):
+    monkeypatch.setitem(cfg(), "voice_replies", True)
+
+    def broken(text):
+        raise RuntimeError("TTS down")
+    monkeypatch.setattr(voice, "speak", broken)
+    stt(Transcript("Table for two tonight?", "en", 0.9))
+    pipeline.handle_whatsapp_message(cafe, wa_voice())
+    assert sent_types(graph) == ["text"]

@@ -34,6 +34,7 @@ class Shop(Base):
     page_id: Mapped[str | None] = mapped_column(String(40), unique=True)  # Facebook Page (Messenger)
     instagram_id: Mapped[str | None] = mapped_column(String(40), unique=True)  # Instagram account linked to that Page
     page_token: Mapped[str | None] = mapped_column(Text)
+    twilio_number: Mapped[str | None] = mapped_column(String(20), unique=True)  # E.164, e.g. +61412345678: SMS and calls
     created_at: Mapped[datetime] = mapped_column(default=now)
 
 

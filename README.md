@@ -11,7 +11,7 @@ One install runs many businesses, each with its own products, settings, staff, c
   - **Conversations:** live chats with staff replies (with saved replies from `business.yaml`) and an AI on/off switch per chat. Under each customer message, "AI used …" shows the tools the AI called, what they returned and what that turn cost.
   - **Products** (Menu for the café): prices, options, stock, dietary info, photos, and a sold-out switch.
 - **Chat simulator** (`#/simulator`, signed-in staff only, since every message runs the paid LLM): a WhatsApp-style phone in the browser, with a hold-to-record mic and a photo button.
-- **Real chats:** WhatsApp through the Cloud API webhook; Messenger and Instagram through the Messenger Platform webhook.
+- **Real chats:** WhatsApp through the Cloud API webhook; Messenger and Instagram through the Messenger Platform webhook; SMS and phone calls through Twilio, so customers on any mobile phone (no app, no data) can text or call.
 
 Every channel runs the same code path: `pipeline.py` → `agent.respond()` → LLM with tools. [How it works](#how-it-works) has the architecture and data-flow diagrams and a breakdown of each component.
 
@@ -33,6 +33,7 @@ backend/
   app/pipeline.py      one entry point per message type (text / voice / photo / other), used by every channel
   app/whatsapp.py      WhatsApp webhook (verify, signature, dedupe) + Graph API client
   app/messenger.py     Messenger and Instagram webhook + Send API
+  app/twilio.py        SMS and phone calls (Twilio): webhooks, signature check, sending SMS, the call's spoken turns
   app/voice.py         speech-to-text (OpenAI gpt-4o-transcribe or Whisper), ffmpeg helpers
   app/main.py          FastAPI: dashboard + simulator API
   manage.py            add businesses and staff, connect their WhatsApp number and Facebook Page
@@ -195,7 +196,9 @@ Backups land in `~/mituai/backups` on the server. **Copy them off the server** (
 
 The flow: WhatsApp `audio` message → `GET /{media_id}` → download with the token → save the original (for the dashboard player) → ffmpeg to 16 kHz mono WAV → reject anything over 2 minutes → speech-to-text → if the transcript is empty or confidence is below `STT_MIN_CONFIDENCE`, reply "please repeat or type it" (never guess) → otherwise the same `agent.respond()` as typed text. The transcript is stored marked as a voice note, and each step's time is logged.
 
-Speech-to-text is OpenAI `gpt-4o-transcribe` (`OPENAI_API_KEY`; `OPENAI_STT_MODEL=whisper-1` for the older model), prompted with the menu's item names so it spells them right. Confidence is the average probability of the transcript's words (Whisper: of its segments). Replies are always text.
+Speech-to-text is OpenAI `gpt-4o-transcribe` (`OPENAI_API_KEY`; `OPENAI_STT_MODEL=whisper-1` for the older model), prompted with the menu's item names so it spells them right. Confidence is the average probability of the transcript's words (Whisper: of its segments).
+
+**Voice replies.** With `voice_replies: true` in a business file, a customer who sends a voice note gets the reply as a voice note too, followed by the same words as text (prices and order numbers are easier to read than to hear). It's OpenAI `gpt-4o-mini-tts` (`OPENAI_TTS_MODEL`, voice `OPENAI_TTS_VOICE`, default `coral`), asked for Ogg/Opus, the format WhatsApp plays as a voice message; the dashboard's chat and the simulator can play it. Typed messages always get text. WhatsApp and the simulator only for now: Messenger and Instagram get the text. If speech fails the text still goes out. The speech isn't counted in the AI cost on the Overview page. Listen to it in each language you turn it on for: Bangla speech is weaker than English.
 
 **Languages.** The assistant replies in the language the customer writes or speaks in; there's nothing to switch on. The speech model detects the language of a voice note itself. `gpt-4o-transcribe` is the default because it's much better than `whisper-1` outside the biggest languages, Bangla included (Whisper is weak on Bangla, Punjabi, Gujarati, Telugu, Sinhala, Burmese and Khmer). When nearly all of a business's customers speak one language, set `voice_language` in its business file to its ISO code (`bn` for Bangla, `hi`, `ms`, `tl`, …): the model then doesn't have to guess. Check a new language on real recordings before promising it, and tune `STT_MIN_CONFIDENCE` if good notes get a "please repeat". The fixed messages in the business file (handoff, "couldn't catch that voice note", order updates) are sent as written, so they're in whatever language you wrote them in.
 
@@ -397,6 +400,15 @@ They take the same path as WhatsApp from `pipeline` onwards; only the edges diff
 | Skipped | status updates | read receipts, deliveries and echoes of our own replies |
 | Sending a photo | upload, then send with a caption | Meta fetches it from `PUBLIC_URL`; photo first, then the text |
 
+### SMS and phone calls
+
+One Twilio account for the install (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`); each business gets its own Twilio number (`manage.py connect <id> --twilio-number +61...`, or `TWILIO_NUMBER` for the first business). On the number's settings in the Twilio console, point **A message comes in** at `https://<PUBLIC_URL>/twilio/sms` and **A call comes in** at `https://<PUBLIC_URL>/twilio/voice` (both HTTP POST). `PUBLIC_URL` must be the address Twilio calls, since it's part of the signature every webhook is checked against ([`twilio.py`](backend/app/twilio.py)).
+
+- **Texts and calls from one number share a chat** (`<business>:phone-<number>`), so a caller who's sent an order summary can reply "yes" by SMS. Anything Mitu or staff send later (status updates, reminders, staff replies) goes by SMS, with no 24-hour window. Photos go as a link, since MMS only works in the US and Canada.
+- **A call is a chat turn per sentence.** Twilio turns the caller's speech into text (`<Gather input="speech">`) and posts it to `/twilio/voice/turn`; `agent.respond()` runs as for any message, with one extra line in the prompt for calls (short spoken sentences, no lists); Twilio reads the reply aloud (`<Say>`) and listens again. The greeting is stored as the first assistant message. Silence, a handoff, or a chat staff have taken over ends the call, and staff call or text back.
+- **Business settings:** `call_language` (default `en-US`, for both what callers speak and the voice, e.g. `bn-IN`; check Twilio's speech-recognition and text-to-speech language lists), `call_voice` (optional, e.g. `Google.en-US-Neural2-F`), and `call_greeting` / `call_goodbye` under `messages`.
+- **Limit:** Twilio waits 15 seconds for each turn, so a slow model (or Ollama on a CPU) ends the call with Twilio's error message. Twilio doesn't sell Bangladeshi numbers; a shop in Bangladesh needs a number from another country, or a local SMS gateway (not built).
+
 ### Duplicate webhooks and crash recovery
 
 Meta retries a webhook it thinks failed, and a restart can cut a reply off halfway. Both are handled by one table, `seen_wa_messages`:
@@ -572,11 +584,11 @@ Each time staff move an order, `main.set_order_status` sends the customer the ma
 
 ### The 24-hour window
 
-Meta only allows free-form messages to a customer within 24 hours of their last message; after that it needs a template, which isn't built yet (issue #11).
+Meta only allows free-form messages to a customer within 24 hours of their last message (SMS has no such rule); after that it needs a template, which isn't built yet (issue #11).
 
 ```mermaid
 flowchart TD
-    S["Mitu wants to message a customer first<br/>(status update, reminder, staff reply)"] --> W{"pipeline.window_open:<br/>simulator, or customer wrote in the last 24 h?"}
+    S["Mitu wants to message a customer first<br/>(status update, reminder, staff reply)"] --> W{"pipeline.window_open:<br/>simulator, SMS/call, or customer wrote in the last 24 h?"}
     W -- "yes" --> D["deliver, then store it in the chat"]
     W -- "no" --> N["don't send: return a note for staff,<br/>or 409 on a staff reply"]
     D -- "send failed" --> F["note: sending failed"]
@@ -895,6 +907,7 @@ The breakdowns below go from the middle out: the message path first, then the da
 
 [`backend/app/voice.py`](backend/app/voice.py)
 
+- **Text-to-speech:** `voice.speak(text) -> bytes` (Ogg/Opus), called by `pipeline.voice_reply` after the agent answers a voice note.
 - **Speech-to-text:** `OpenAISTT.transcribe(wav) -> Transcript(text, language, confidence)`: gpt-4o-transcribe (or Whisper), prompted with the menu's item names via `stt_hint` and the business's `voice_language` if set, confidence from token (Whisper: segment) log-probabilities. `get_stt()` builds it, and tests swap it for a fake.
 - **ffmpeg helpers:** `to_wav` (16 kHz mono for speech-to-text) and `wav_seconds`. Temp files rather than pipes, because browser recordings need seekable input.
 - **Change it when:** adding a speech provider (make `get_stt()` pick one) or spoken replies.
@@ -1063,7 +1076,7 @@ flowchart LR
 | Add a setting to the business file | read it with `tenancy.cfg()` where it's used | document it in [Set up a business](#3-set-up-a-business) |
 | Add a business table | a model subclassing `db.Scoped` | a test in `test_tenancy.py` |
 | Support a new message type | `pipeline.py` (and the channel's webhook parser) | a test in `test_webhook.py` |
-| Add a channel | a router like `messenger.py`, a branch in `pipeline.deliver` | route it through `pipeline`, never straight to the agent |
+| Add a channel | a router like `messenger.py` or `twilio.py`, a branch in `pipeline.deliver` | route it through `pipeline`, never straight to the agent |
 | Add an LLM provider | a class in `llm.py` with `run(...)`, its prices in `PRICES` | `LLM_PROVIDER` in `.env.example` and the README |
 | Add a dashboard page | an endpoint in `main.py`, a page in `Dashboard.jsx`, a link in `App.jsx` | `npm run build` |
 | Add an env var | `config.py` | `.env.example` and the README |

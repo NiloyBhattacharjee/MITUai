@@ -41,6 +41,10 @@ def send_image(to: str, media_id: str, caption: str):
     return _post_message({"to": to, "type": "image", "image": {"id": media_id, "caption": caption}})
 
 
+def send_audio(to: str, media_id: str):
+    return _post_message({"to": to, "type": "audio", "audio": {"id": media_id}})
+
+
 def mark_read(message_id: str):
     try:
         _post_message({"status": "read", "message_id": message_id})
